@@ -1,12 +1,73 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
+enum Role {
+  STUDENT
+  TUTOR
+  ADMIN
+}
+
+enum SlotStatus {
+  AVAILABLE
+  BOOKED
+  CANCELLED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  password String
+  name     String
+  role     Role
+
+  slots    TutorSlot[] @relation("TutorSlots")
+  bookings Booking[]   @relation("StudentBookings")
+}
+
+model TutorSlot {
+  id      Int  @id @default(autoincrement())
+  tutorId Int
+  tutor   User @relation("TutorSlots", fields: [tutorId], references: [id])
+
+  subject   String
+  startTime DateTime
+  endTime   DateTime
+  price     Decimal    @db.Decimal(10, 2)
+  status    SlotStatus @default(AVAILABLE)
+
+  bookings Booking[]
+}
+
+model Booking {
+  id        Int  @id @default(autoincrement())
+  studentId Int
+  student   User @relation("StudentBookings", fields: [studentId], references: [id])
+
+  slotId Int
+  slot   TutorSlot @relation(fields: [slotId], references: [id])
+
+  notes     String?
+  status    BookingStatus @default(CONFIRMED)
+  createdAt DateTime      @default(now())
+
+  // Cancellation and refund information
+  cancelledAt      DateTime?
+  priceAtBooking   Decimal   @db.Decimal(10, 2)
+  refundPercentage Int?
+  refundAmount     Decimal?  @db.Decimal(10, 2)
+
+  @@unique([slotId], where: raw("status = 'CONFIRMED'"))
+  @@index([studentId, status])
+}
