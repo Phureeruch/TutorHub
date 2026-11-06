@@ -1,0 +1,17 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: tutorhub-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: tutorhub
+    ports:
+      - "5433:5432"
+    volumes:
+      - tutorhub_pgdata:/var/lib/postgresql/data
+
+volumes:
+  tutorhub_pgdata:
