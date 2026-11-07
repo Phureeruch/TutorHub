@@ -2,7 +2,10 @@
 
 ## 1. Overview
 
-TutorHub is delivered across **three sprints**, each building on the previous one. The plan follows a vertical-slice strategy: Sprint 1 establishes the minimum working booking workflow end-to-end, Sprint 2 expands core features and lifecycle management, and Sprint 3 completes the product with feedback, completion tracking, and quality hardening.
+TutorHub is delivered across **three sprints**, each building on the previous one. The plan follows a vertical-slice strategy aligned with the **Draft 2 SRS Requirements**: 
+- **Sprint 1** establishes the baseline vertical slice: authentication with student self-registration and mock verification, continuous tutor availability windows, partial booking with atomic mock payment, and price snapshots.
+- **Sprint 2** expands core lifecycle management: search/filtering, 3-tier cancellation and refund calculations, tutor cancellations, interval merging, admin tutor approval, and cloud deployment.
+- **Sprint 3** completes the product: session completion, editable student reviews, aggregate tutor rating displays, audit records, and end-to-end quality hardening.
 
 ---
 
@@ -10,112 +13,125 @@ TutorHub is delivered across **three sprints**, each building on the previous on
 
 | Sprint | Focus | Deliverable | Deadline |
 |:---|:---|:---|:---|
-| **Sprint 1** | Baseline — Auth, Slots, Booking | Project Deliverable 1 | Nov 8, 2026 |
-| **Sprint 2** | Core Expansion — Search, Cancellation, Admin | Project Deliverable 2 | Nov 29, 2026 |
-| **Sprint 3** | Completion — Feedback, Ratings, Hardening | Final Project Delivery | Dec 13, 2026 |
+| **Sprint 1** | Baseline — Auth, Registration, Availability Periods, Partial Booking & Atomic Confirmation | Project Deliverable 1 | Nov 8, 2026 |
+| **Sprint 2** | Core Expansion — Search, 3-Tier Cancellation & Refunds, Interval Merging, Admin Approval | Project Deliverable 2 | Nov 29, 2026 |
+| **Sprint 3** | Completion — Lesson Notes, Editable Reviews, Tutor Ratings, Historical Audit, Hardening | Final Project Delivery | Dec 13, 2026 |
 
 ---
 
 ## 3. Sprint 1 — Baseline (Deliverable 1)
 
 ### Goal
-Deliver the thinnest vertical slice that proves authentication, database persistence, exclusive slot booking, and role-based access control work end-to-end (UI → API → DB → View Result).
+Deliver the thinnest vertical slice proving authentication, student registration, continuous availability, partial booking with interval alignment, atomic mock payment with price snapshotting, and role-based access control work end-to-end (UI → API → DB → View Result).
 
 ### Features
 
 | Feature ID | Feature | Requirements Covered |
 |:---|:---|:---|
-| **F-01** | Authentication & Identity | FR-01, FR-02, NFR-01, NFR-03 |
-| **F-02** | Tutor Availability Slot Creation | FR-03, BR-02, BR-03, BR-06 |
-| **F-03** | Student Slot Browsing | FR-04 |
-| **F-04** | Student Booking Creation | FR-05, BR-01, BR-02, BR-03 |
-| **F-05** | Student Booking Retrieval | FR-06, NFR-02 |
-| **F-06** | Tutor Appointment View | FR-07, NFR-02 |
-| **F-07** | Admin Booking Overview | FR-08, BR-03 |
-| **F-08** | Database Seeding | NFR-04, NFR-05 |
+| **F-01** | User Authentication, Registration & Mock Email Verification | FR-01, FR-02, FR-03, FR-04, BR-01, BR-02, BR-03, NFR-01, NFR-03 |
+| **F-02** | Tutor Profile & Continuous Availability Period Creation | FR-05, FR-06, BR-04, BR-05, NFR-01 |
+| **F-03** | Student Availability Browsing & Discovery | FR-07, BR-05, BR-06 |
+| **F-04** | Partial Booking Creation, Atomic Mock Payment & Price Snapshot | FR-08, FR-09, FR-10, BR-05, BR-06, BR-07, BR-08, BR-09, NFR-04 |
+| **F-05** | Student Booking Retrieval | FR-11, NFR-02 |
+| **F-06** | Tutor Appointment View | FR-11, NFR-02 |
+| **F-07** | Admin System-Wide Booking Overview | FR-11, BR-03 |
+| **F-08** | Database Seeding & Schema Migrations | NFR-03, NFR-05, Section 9 |
 
 ### Key Business Rules Verified in Sprint 1
-- **BR-01:** Slot exclusivity — double booking rejected (409 Conflict).
-- **BR-02:** No past slots — past timestamps rejected (400 Bad Request).
-- **BR-03:** Role segregation — students cannot create slots, tutors cannot book (403 Forbidden).
-- **BR-06:** End time must be after start time (400 Bad Request).
-- **NFR-01:** Backend authorization enforced on all endpoints.
-- **NFR-02:** Students cannot see other students' bookings (403 Forbidden).
+- **BR-01 & BR-03:** Single role per account and server-enforced role segregation (STUDENT, TUTOR, ADMIN).
+- **BR-02:** Student self-registration and mock email verification enforced before booking is allowed.
+- **BR-04 & BR-05:** Tutor availability period must be $\ge 1\text{h}$ in whole hours, starting on `:00` or `:30`. Booking start times follow 1-hour intervals aligned with availability start, preventing unbookable fractional fragments.
+- **BR-06:** Partial booking permitted within an availability block; remaining time remains bookable in whole hours.
+- **BR-07:** Overlapping bookings prevented for the same Tutor and the same Student.
+- **BR-08 & NFR-04:** Atomic confirmation and mock payment; race condition conflicts roll back atomically without partial state changes or ghost payment records.
+- **BR-09:** Price snapshot ($\text{hourly price} \times \text{duration}$) is recorded and frozen at booking confirmation.
+- **NFR-01 & NFR-02:** Backend role authorization and cross-user data isolation.
 
 ### Sprint 1 Exit Criteria
-- [ ] All three roles can log in and log out.
-- [ ] A tutor can create an availability slot for a future date.
-- [ ] A student can browse available slots and book one.
-- [ ] The booking is persisted and retrievable after page refresh.
-- [ ] A duplicate booking attempt is rejected by the backend.
-- [ ] A past-date slot creation is rejected by the backend.
-- [ ] A student calling a tutor-only endpoint receives 403.
-- [ ] Automated tests verify BR-01, BR-02, BR-03, and NFR-01.
+- [ ] Student can register, complete mock email verification, and log in.
+- [ ] Tutor and Admin can log in with seeded/authorized accounts.
+- [ ] A Tutor can create a continuous availability period ($\ge 1\text{h}$) starting at `:00` or `:30`.
+- [ ] A Student can browse available tutors and select an availability period.
+- [ ] A Student can partially book a whole-hour duration (e.g., 1 hour within a 3-hour period) on valid 1-hour interval marks.
+- [ ] Mock payment succeeds, the price snapshot is frozen, and the booking is confirmed atomically.
+- [ ] A concurrent booking attempt for the same time is rejected with HTTP `409 Conflict` and rolls back atomically.
+- [ ] Student, Tutor, and Admin can view their respective authorized booking lists.
+- [ ] Automated tests verify BR-01, BR-02, BR-04, BR-05, BR-06, BR-07, BR-08, BR-09, and NFR-01.
 - [ ] Code is merged to `main` via reviewed PRs on `sprint-1-staging`.
 
 ---
 
-## 4. Sprint 2 — Core Expansion (Deliverable 2)
+## 4. Sprint 2 — Core Expansion & Lifecycle Management (Deliverable 2)
 
 ### Goal
-Extend the booking platform with discovery/search capabilities, booking lifecycle management (cancellation), tutor slot management, and admin operational tools. Deploy the application to GCP with CI/CD.
+Extend the platform with advanced discovery/filtering, full booking lifecycle management (3-tier refund policy, tutor cancellations, interval merging), admin tutor approval and subject catalog management, and containerized deployment with CI/CD.
 
 ### Features
 
 | Feature ID | Feature | Requirements Covered |
 |:---|:---|:---|
-| **F-09** | Search & Filter Slots | FR-09 |
-| **F-10** | Booking Cancellation & Slot Reversion | FR-10, BR-05 |
-| **F-11** | Tutor Slot Edit / Delete | FR-11 |
-| **F-12** | Admin Tutor & Subject Management | FR-12 |
-| **F-13** | Docker Containerization & GCP Deployment | NFR-07 |
-| **F-14** | CI/CD Pipeline (GitHub Actions) | NFR-06 |
+| **F-09** | Advanced Search & Filter (by Subject, Tutor, Date/Time) | FR-07 |
+| **F-10** | Student Cancellation & 3-Tier Refund Calculation | FR-12, BR-10, BR-11, BR-13, BR-15 |
+| **F-11** | Tutor Booking Cancellation Handling | FR-12, BR-12, BR-15 |
+| **F-12** | Tutor Availability Management & Interval Merging | FR-06, BR-04, BR-13 |
+| **F-13** | Admin Tutor Account Approval & Subject Catalog Management | FR-02, FR-05 |
+| **F-14** | Docker Containerization & Cloud Deployment | NFR-03, NFR-05 |
+| **F-15** | CI/CD Pipeline (GitHub Actions) | NFR-05 |
 
 ### New Business Rules in Sprint 2
-- **BR-05:** Cancellation time-window rule (>24h: slot reopens; <24h: slot stays cancelled).
+- **BR-10:** Confirmed bookings cannot be directly modified; student must cancel and rebook.
+- **BR-11:** 3-Tier Student Cancellation Refund:
+  - $\ge 72\text{h}$ before lesson: 100% refund.
+  - $24\text{h} \le t < 72\text{h}$ before lesson: 50% refund.
+  - $< 24\text{h}$ before lesson: 0% refund.
+  - Cancellations only allowed prior to lesson start time.
+- **BR-12:** Tutor cancellation triggers 100% refund to the student; the cancelled time remains blocked and is not reopened.
+- **BR-13:** Student cancellation restores the released time and automatically merges with adjacent available intervals into a single continuous block.
+- **BR-15:** System retains audit records for all cancellations, payments, and refunds.
 
 ### Dependencies
 - Sprint 1 must be complete and merged to `main`.
-- GCP project and Cloud SQL instance must be provisioned (Lab 5).
-- Cross-team UAT feedback from Lab 6 must be triaged.
+- Cloud PostgreSQL instance provisioned.
+- Cross-team UAT feedback triaged.
 
 ### Sprint 2 Exit Criteria
-- [ ] Students can filter slots by subject, tutor, and date range.
-- [ ] Students can cancel bookings with correct time-window enforcement.
-- [ ] Tutors can delete/edit their own unbooked slots.
-- [ ] Admin can manage tutor subjects.
-- [ ] Application is deployed on GCP and accessible via public URL.
-- [ ] GitHub Actions CI pipeline runs tests on every PR.
-- [ ] At least one Lab 6 UAT defect is fixed and verified.
+- [ ] Students can search and filter available tutors by subject, date, and time.
+- [ ] Students can cancel a booking, and the system accurately calculates 100%, 50%, or 0% refund according to BR-11.
+- [ ] Cancelled student bookings restore availability and automatically merge adjacent time intervals.
+- [ ] Tutors can cancel bookings; student receives 100% refund and the time slot remains blocked.
+- [ ] Admin can approve pending Tutor accounts and manage the subject catalog.
+- [ ] Application is containerized with Docker, deployed to cloud infrastructure, and accessible via public URL.
+- [ ] GitHub Actions CI runs linting, build, and automated tests on every PR.
 - [ ] Sprint 3 contracts (feature SDS, AC, STS) are complete.
-- [ ] At least one Sprint 3 feature (F-15) is implemented and tested.
 
 ---
 
-## 5. Sprint 3 — Completion & Hardening (Final Delivery)
+## 5. Sprint 3 — Completion, Feedback & Quality Hardening (Final Delivery)
 
 ### Goal
-Complete remaining product features (session completion, student feedback, tutor ratings), harden test coverage, polish the UI, and deliver the final demonstration video.
+Complete remaining product features (lesson completion and homework notes, editable student reviews, aggregate tutor rating displays), audit trail retention, test suite hardening, UI polish, and final project demonstration.
 
 ### Features
 
 | Feature ID | Feature | Requirements Covered |
 |:---|:---|:---|
-| **F-15** | Tutor Session Completion & Notes | FR-13 |
-| **F-16** | Student Feedback & Rating | FR-14, BR-07 |
-| **F-17** | Tutor Average Rating Display | FR-15 |
-| **F-18** | Regression Test Suite & Quality Hardening | NFR-06 |
+| **F-16** | Tutor Lesson Completion & Homework Notes | FR-13, BR-14 |
+| **F-17** | Student Review Submission & In-Place Editing | FR-14, BR-14 |
+| **F-18** | Tutor Aggregate Rating Calculation & Profile Display | FR-15 |
+| **F-19** | Historical Records Audit, Regression Suite & Hardening | BR-15, NFR-04, NFR-05 |
 
 ### New Business Rules in Sprint 3
-- **BR-07:** One review per completed booking (unique constraint).
+- **BR-14:** Only completed lessons can be reviewed. Exactly one review per booking, which the student can edit.
+- **BR-15:** Complete audit history retention for bookings, payments, refunds, and reviews.
 
 ### Sprint 3 Exit Criteria
-- [ ] Tutors can mark appointments as completed and enter lesson notes.
-- [ ] Students can rate completed sessions (1–5 stars + text review).
-- [ ] Tutor profiles display calculated average rating.
-- [ ] Full regression test suite passes (all sprints).
-- [ ] 4-minute demonstration video is recorded (both team members presenting).
-- [ ] Final self-contained PDF is compiled and submitted.
+- [ ] Tutors can mark appointments as completed and enter lesson notes/homework.
+- [ ] Students can rate completed sessions (1–5 stars) and submit written reviews.
+- [ ] Students can edit their existing reviews.
+- [ ] Tutor profiles calculate and display average rating and review counts.
+- [ ] Full regression test suite passes across all Sprint 1–3 features.
+- [ ] Demonstration video is recorded with all team members presenting.
+- [ ] Final self-contained project documentation and report are compiled and submitted.
 - [ ] Code is merged to `main` and tagged (e.g., `v1.0.0-final`).
 
 ---
@@ -124,24 +140,25 @@ Complete remaining product features (session completion, student feedback, tutor
 
 | Feature ID | Feature Name | Sprint 1 | Sprint 2 | Sprint 3 |
 |:---|:---|:---:|:---:|:---:|
-| F-01 | Authentication & Identity | ✅ | | |
-| F-02 | Tutor Slot Creation | ✅ | | |
-| F-03 | Student Slot Browsing | ✅ | | |
-| F-04 | Student Booking Creation | ✅ | | |
-| F-05 | Student Booking Retrieval | ✅ | | |
-| F-06 | Tutor Appointment View | ✅ | | |
-| F-07 | Admin Booking Overview | ✅ | | |
-| F-08 | Database Seeding | ✅ | | |
-| F-09 | Search & Filter Slots | | ✅ | |
-| F-10 | Booking Cancellation | | ✅ | |
-| F-11 | Tutor Slot Edit / Delete | | ✅ | |
-| F-12 | Admin Tutor & Subject Mgmt | | ✅ | |
-| F-13 | Docker & GCP Deployment | | ✅ | |
-| F-14 | CI/CD Pipeline | | ✅ | |
-| F-15 | Session Completion & Notes | | | ✅ |
-| F-16 | Student Feedback & Rating | | | ✅ |
-| F-17 | Tutor Average Rating | | | ✅ |
-| F-18 | Regression & Hardening | | | ✅ |
+| **F-01** | User Auth, Registration & Mock Verification | ✅ | | |
+| **F-02** | Tutor Profile & Availability Periods | ✅ | | |
+| **F-03** | Student Availability Browsing & Discovery | ✅ | | |
+| **F-04** | Partial Booking, Atomic Confirmation & Price Snapshot | ✅ | | |
+| **F-05** | Student Booking Retrieval | ✅ | | |
+| **F-06** | Tutor Appointment View | ✅ | | |
+| **F-07** | Admin System-Wide Booking Overview | ✅ | | |
+| **F-08** | Database Seeding & Schema Migrations | ✅ | | |
+| **F-09** | Advanced Search & Filter (Subject, Tutor, Date) | | ✅ | |
+| **F-10** | Student Cancellation & 3-Tier Refund Engine | | ✅ | |
+| **F-11** | Tutor Cancellation Handling | | ✅ | |
+| **F-12** | Tutor Availability Editing & Interval Merging | | ✅ | |
+| **F-13** | Admin Tutor Approval & Subject Catalog | | ✅ | |
+| **F-14** | Docker Containerization & Cloud Deployment | | ✅ | |
+| **F-15** | CI/CD Pipeline (GitHub Actions) | | ✅ | |
+| **F-16** | Lesson Completion & Homework Notes | | | ✅ |
+| **F-17** | Student Review Submission & Editing | | | ✅ |
+| **F-18** | Tutor Aggregate Rating Display | | | ✅ |
+| **F-19** | Historical Records Audit & Regression Suite | | | ✅ |
 
 ---
 
@@ -149,10 +166,10 @@ Complete remaining product features (session completion, student feedback, tutor
 
 | Risk | Impact | Mitigation |
 |:---|:---|:---|
-| Final exam period (Dec 1–11) conflicts with Sprint 3 | Incomplete Sprint 3 features | Target 90% code completion by Nov 29 (Deliverable 2). Implement F-15 before Nov 29. Reserve Dec 12–13 weekend for F-16, F-17, video recording, and PDF compilation. |
-| Prisma 8 RC instability | Migration or ORM bugs | Pin the exact Prisma version. Test migrations early. Have fallback to raw SQL if needed. |
-| Cross-team UAT (Lab 6) produces many defects | Sprint 2 scope overrun | Triage defects immediately. Fix critical/high only; defer cosmetic issues to Sprint 3. |
-| GCP deployment issues (Lab 5) | Deployment delay blocks Deliverable 2 | Start Docker containerization as early as Nov 9. Do not wait until the Lab 5 deadline. |
+| **Partial Booking / Interval Slicing Complexity** | Overlap bugs or dead time fragments | Strictly enforce BR-04 & BR-05 (1-hour interval alignment starting at `:00`/`:30`). Test interval splitting and merging logic thoroughly with unit tests. |
+| **Concurrency Race on Booking Confirmation** | Double bookings or ghost payment charges | Enforce BR-08 with database transactions (`SERIALIZABLE` or `SELECT ... FOR UPDATE`); atomically roll back mock payment and booking creation on conflict. |
+| **Final Exam Period (Dec 1–11)** | Incomplete Sprint 3 features | Target 90% code completion by Nov 29 (Deliverable 2). Implement F-16 prior to Nov 29. Reserve Dec 12–13 for F-17, F-18, video recording, and final report compilation. |
+| **Cloud Deployment Issues** | Delays blocking Deliverable 2 | Start Docker containerization early in Sprint 2. Use local container testing before deploying to cloud infrastructure. |
 
 ---
 
@@ -160,6 +177,6 @@ Complete remaining product features (session completion, student feedback, tutor
 
 | Track | Partner 1 | Partner 2 |
 |:---|:---|:---|
-| **Sprint 1** | Auth API, Slot Creation, Frontend UI, SRS (Part A), Sprint Plan (Part D) | Booking API, Conflict Prevention, System SDS (Part C), Traceability (Part B) |
-| **Sprint 2** | Search/Filter, Admin Dashboard, Docker/GCP Setup (Lab 5) | Cancellation Logic, Slot Edit/Delete, UAT Triage (Lab 6), Maintenance (Lab 7) |
-| **Sprint 3** | Session Completion (F-15), Tutor Ratings (F-17) | Student Feedback (F-16), Regression Suite (F-18), Demo Video |
+| **Sprint 1** | Auth & Registration API, Mock Verification UI/API, Availability Creation, Frontend Layout | Booking API, Partial Booking & Conflict Prevention, Mock Payment & Price Snapshot, DB Schema/Seed |
+| **Sprint 2** | Advanced Search/Filter, Admin Tutor Approval & Subject Management, Docker & Cloud Setup | 3-Tier Cancellation & Refund Engine, Tutor Cancellation, Interval Merging Logic, CI/CD Pipeline |
+| **Sprint 3** | Lesson Completion & Notes (F-16), Tutor Rating Display (F-18), Final Report Compilation | Student Reviews & Editing (F-17), Historical Audit (F-19), Regression Suite, Demo Video |
