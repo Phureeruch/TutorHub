@@ -147,3 +147,11 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Agents Stuff
+.agents/*
+.claude/*
+
+# Agents Plan
+docs/implementation-plans
+
