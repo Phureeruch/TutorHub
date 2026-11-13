@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { listTutorDirectory, type TutorListing } from '../../api/mockApi'
 import { useMockApp } from '../../context/appContext'
 import { useNow } from '../../hooks/useNow'
-import type { Availability, Booking } from '../../types/types'
+import type { Availability, Booking, TeachingLevel } from '../../types/types'
 import { HOUR_MS } from '../../utils/bookingRules'
-import { formatDay, formatHours, formatMoney, formatRate, formatTimeRange, toDateInputValue } from '../../utils/format'
+import { formatDay, formatHours, formatMoney, formatRateRange, formatTimeRange, toDateInputValue } from '../../utils/format'
+import { isTeachingLevel, LEVEL_LABEL, TEACHING_LEVELS } from '../../utils/levels'
 import { subjectNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
 import { TimeTrack } from '../ui/TimeTrack'
 import { BookingModal } from './BookingModal'
+import { SubjectList } from './SubjectDetails'
 
 const hoursOf = (a: Availability) => (new Date(a.endTime).getTime() - new Date(a.startTime).getTime()) / HOUR_MS
 
@@ -19,15 +21,9 @@ function TutorEntry({ listing, onBook }: { listing: TutorListing; onBook(a: Avai
     <article className="th-tutor" aria-labelledby={headingId}>
       <div className="th-tutor-about">
         <h2 id={headingId}>{user.name}</h2>
-        <p className="th-tutor-rate">{formatRate(profile.hourlyPrice)}</p>
+        <p className="th-tutor-rate">{formatRateRange(subjects.map((s) => s.hourlyPrice))}</p>
         {profile.bio && <p className="th-tutor-bio">{profile.bio}</p>}
-        <ul className="th-tag-list" aria-label="Subjects">
-          {subjects.map((s) => (
-            <li key={s.id} className="th-tag">
-              {s.name}
-            </li>
-          ))}
-        </ul>
+        <SubjectList subjects={subjects} />
       </div>
       <div className="th-tutor-windows">
         <h3 className="visually-hidden">Open times</h3>
@@ -72,20 +68,26 @@ export function StudentDiscoveryView() {
   const [subjectId, setSubjectId] = useState<number | undefined>(undefined)
   const [tutorId, setTutorId] = useState<number | undefined>(undefined)
   const [date, setDate] = useState('')
+  const [level, setLevel] = useState<TeachingLevel | undefined>(undefined)
   const [selection, setSelection] = useState<{ listing: TutorListing; availability: Availability } | null>(null)
   const [confirmed, setConfirmed] = useState<Booking | null>(null)
 
-  const listings = listTutorDirectory(db, { now, subjectId, tutorId, date: date || undefined })
+  const listings = listTutorDirectory(db, { now, subjectId, tutorId, date: date || undefined, level })
   const tutors = db.users.filter((u) => u.role === 'TUTOR' && u.isApproved)
-  const filtered = subjectId !== undefined || tutorId !== undefined || date !== ''
+  const filtered = subjectId !== undefined || tutorId !== undefined || date !== '' || level !== undefined
   const clearFilters = () => {
     setSubjectId(undefined)
     setTutorId(undefined)
     setDate('')
+    setLevel(undefined)
   }
 
   const emptyMessage = () => {
     if (date) return `No open times on ${formatDay(`${date}T00:00`)} match these filters.`
+    if (level !== undefined) {
+      const what = subjectId !== undefined ? subjectNameOf(db, subjectId) : 'any subject'
+      return `No tutor teaches ${what} at ${LEVEL_LABEL[level].toLowerCase()} level with open times right now.`
+    }
     if (subjectId !== undefined) return `No tutor teaches ${subjectNameOf(db, subjectId)} with open times right now.`
     if (tutorId !== undefined) return 'This tutor has no open times right now.'
     return 'No tutors have open times yet.'
@@ -136,6 +138,24 @@ export function StudentDiscoveryView() {
               {tutors.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label" htmlFor="filter-level">
+              Level
+            </label>
+            <select
+              id="filter-level"
+              className="form-select"
+              value={level ?? ''}
+              onChange={(e) => setLevel(isTeachingLevel(e.target.value) ? e.target.value : undefined)}
+            >
+              <option value="">All levels</option>
+              {TEACHING_LEVELS.map((l) => (
+                <option key={l} value={l}>
+                  {LEVEL_LABEL[l]}
                 </option>
               ))}
             </select>

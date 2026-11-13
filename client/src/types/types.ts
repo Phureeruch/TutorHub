@@ -24,19 +24,34 @@ export interface Subject {
   createdAt: string
 }
 
+// Rates are set per subject, so hourlyPrice lives on TutorSubject. SDS §2 still
+// has TutorProfile.hourlyPrice; docs/backend-api-guide.md §2 covers the migration.
 export interface TutorProfile {
   id: number
   userId: number
   bio: string | null
-  hourlyPrice: number
   createdAt: string
   updatedAt: string
 }
+
+/** Who a tutor teaches a subject to. Not in SRS Draft 2 or SDS §2 yet (backend-api-guide.md §2, R3). */
+export type TeachingLevel = 'HIGH_SCHOOL' | 'UNDERGRADUATE' | 'GRADUATE'
 
 export interface TutorSubject {
   id: number
   tutorProfileId: number
   subjectId: number
+  hourlyPrice: number
+  levels: TeachingLevel[]
+  /** What the tutor covers in this subject, shown to students. */
+  topics: string | null
+}
+
+/** Lecture file a student attaches to a booking. Not in SRS Draft 2 (§4.2 lists attachments as out of scope). */
+export interface BookingAttachment {
+  name: string
+  size: number
+  type: string
 }
 
 export interface Availability {
@@ -59,6 +74,7 @@ export interface Booking {
   hourlyPriceSnapshot: number
   totalPrice: number
   notes: string | null
+  attachments: BookingAttachment[]
   lessonSummary: string | null
   status: BookingStatus
   paymentStatus: PaymentStatus
@@ -77,10 +93,18 @@ export interface RegisterRequest {
   name: string
 }
 
+/** One subject a tutor teaches, as sent by the profile form. */
+export interface TaughtSubjectInput {
+  subjectId: number
+  hourlyPrice: number
+  levels?: TeachingLevel[]
+  topics?: string
+}
+
+// Replaces SDS §4.2 `{ bio?, hourlyPrice, subjectIds }`: rate, levels and topics are per subject.
 export interface UpdateTutorProfileRequest {
   bio?: string
-  hourlyPrice: number
-  subjectIds: number[]
+  subjects: TaughtSubjectInput[]
 }
 
 export interface CreateAvailabilityRequest {
@@ -94,6 +118,7 @@ export interface CreateBookingRequest {
   startTime: string
   durationHours: number
   notes?: string
+  attachments?: BookingAttachment[]
 }
 
 // Client-side mock database standing in for PostgreSQL during Sprint 1 UI work.

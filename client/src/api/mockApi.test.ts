@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createSeedDb, SEED_PASSWORD } from '../data/seedData'
-import type { MockDb } from '../types/types'
+import type { MockDb, TeachingLevel } from '../types/types'
 import {
   ApiError,
+  MAX_TOPICS_LENGTH,
   createAvailability,
   createBooking,
   deleteAvailability,
@@ -15,6 +16,7 @@ import {
   updateTutorProfile,
   verifyEmail,
 } from './mockApi'
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../utils/attachments'
 
 const NOW = new Date(2026, 10, 12, 8, 0)
 const day = (offset: number, hh: number, mm = 0) => new Date(2026, 10, 12 + offset, hh, mm).toISOString()
@@ -95,35 +97,97 @@ describe('resetPassword (FR-04)', () => {
   })
 })
 
-describe('updateTutorProfile (FR-05)', () => {
-  it('updates bio, rate and subjects for the tutor', () => {
-    const { db } = updateTutorProfile(fresh(), userOf(fresh(), ALICE), { bio: 'New bio', hourlyPrice: 65, subjectIds: [1, 4] })
-    const profile = db.tutorProfiles.find((p) => p.userId === ALICE)!
-    expect(profile).toMatchObject({ bio: 'New bio', hourlyPrice: 65 })
-    expect(db.tutorSubjects.filter((ts) => ts.tutorProfileId === profile.id).map((ts) => ts.subjectId)).toEqual([1, 4])
+describe('updateTutorProfile (FR-05, per-subject rates)', () => {
+  const rates = (db: MockDb, tutorId: number) => {
+    const profile = db.tutorProfiles.find((p) => p.userId === tutorId)!
+    return db.tutorSubjects
+      .filter((ts) => ts.tutorProfileId === profile.id)
+      .map((ts) => [ts.subjectId, ts.hourlyPrice])
+  }
+
+  it('updates the bio and sets a separate rate for each taught subject', () => {
+    const { db } = updateTutorProfile(fresh(), userOf(fresh(), ALICE), {
+      bio: 'New bio',
+      subjects: [
+        { subjectId: 4, hourlyPrice: 500 },
+        { subjectId: 1, hourlyPrice: 650 },
+      ],
+    })
+    expect(db.tutorProfiles.find((p) => p.userId === ALICE)).toMatchObject({ bio: 'New bio' })
+    expect(rates(db, ALICE)).toEqual([
+      [1, 650],
+      [4, 500],
+    ])
   })
 
   it('forbids non-tutors with 403', () => {
-    const err = apiErrorOf(() => updateTutorProfile(fresh(), userOf(fresh(), CHARLIE), { hourlyPrice: 1, subjectIds: [1] }))
+    const err = apiErrorOf(() =>
+      updateTutorProfile(fresh(), userOf(fresh(), CHARLIE), { subjects: [{ subjectId: 1, hourlyPrice: 100 }] }),
+    )
     expect(err.status).toBe(403)
   })
 
-  it('rejects a non-positive rate with 400', () => {
-    const err = apiErrorOf(() => updateTutorProfile(fresh(), userOf(fresh(), ALICE), { hourlyPrice: 0, subjectIds: [1] }))
+  it('rejects a non-positive rate on any subject with 400 and names the subject', () => {
+    const err = apiErrorOf(() =>
+      updateTutorProfile(fresh(), userOf(fresh(), ALICE), {
+        subjects: [
+          { subjectId: 1, hourlyPrice: 400 },
+          { subjectId: 2, hourlyPrice: 0 },
+        ],
+      }),
+    )
     expect(err.status).toBe(400)
+    expect(err.message).toMatch(/Data Structures/)
   })
 
   it('rejects an empty subject list with 400', () => {
-    const err = apiErrorOf(() => updateTutorProfile(fresh(), userOf(fresh(), ALICE), { hourlyPrice: 40, subjectIds: [] }))
+    expect(apiErrorOf(() => updateTutorProfile(fresh(), userOf(fresh(), ALICE), { subjects: [] })).status).toBe(400)
+  })
+
+  it('stores the levels and topics a tutor teaches for each subject', () => {
+    const { db } = updateTutorProfile(fresh(), userOf(fresh(), ALICE), {
+      subjects: [
+        { subjectId: 1, hourlyPrice: 400, levels: ['UNDERGRADUATE', 'HIGH_SCHOOL', 'HIGH_SCHOOL'], topics: '  Loops, recursion  ' },
+        { subjectId: 2, hourlyPrice: 450, topics: '   ' },
+      ],
+    })
+    const alice = listTutorDirectory(db, { now: NOW }).find((t) => t.user.id === ALICE)!
+    expect(alice.subjects.map((s) => [s.name, s.levels, s.topics])).toEqual([
+      ['Python Basics', ['HIGH_SCHOOL', 'UNDERGRADUATE'], 'Loops, recursion'],
+      ['Data Structures', [], null],
+    ])
+  })
+
+  it('rejects an unknown level with 400', () => {
+    const err = apiErrorOf(() =>
+      updateTutorProfile(fresh(), userOf(fresh(), ALICE), {
+        subjects: [{ subjectId: 1, hourlyPrice: 400, levels: ['PHD' as TeachingLevel] }],
+      }),
+    )
     expect(err.status).toBe(400)
+  })
+
+  it('rejects topics longer than the limit with 400 and names the subject', () => {
+    const err = apiErrorOf(() =>
+      updateTutorProfile(fresh(), userOf(fresh(), ALICE), {
+        subjects: [{ subjectId: 2, hourlyPrice: 450, topics: 'x'.repeat(MAX_TOPICS_LENGTH + 1) }],
+      }),
+    )
+    expect(err.status).toBe(400)
+    expect(err.message).toMatch(/Data Structures/)
   })
 
   it('leaves price snapshots on existing bookings untouched (BR-09)', () => {
     const before = fresh()
-    const { db } = updateTutorProfile(before, userOf(before, ALICE), { hourlyPrice: 65, subjectIds: [1, 2] })
+    const { db } = updateTutorProfile(before, userOf(before, ALICE), {
+      subjects: [
+        { subjectId: 1, hourlyPrice: 650 },
+        { subjectId: 2, hourlyPrice: 650 },
+      ],
+    })
     const aliceBooking = db.bookings.find((b) => b.tutorId === ALICE)!
-    expect(aliceBooking.hourlyPriceSnapshot).toBe(40)
-    expect(aliceBooking.totalPrice).toBe(40)
+    expect(aliceBooking.hourlyPriceSnapshot).toBe(400)
+    expect(aliceBooking.totalPrice).toBe(400)
   })
 })
 
@@ -184,12 +248,43 @@ describe('createBooking (FR-08..FR-10)', () => {
       startTime: day(1, 10, 30),
       endTime: day(1, 11, 30),
       durationHours: 1,
-      hourlyPriceSnapshot: 40,
-      totalPrice: 40,
+      hourlyPriceSnapshot: 400,
+      totalPrice: 400,
       status: 'CONFIRMED',
       paymentStatus: 'SUCCESS',
       notes: 'Recursion',
     })
+  })
+
+  it("snapshots the chosen subject's own rate (per-subject pricing)", () => {
+    const before = fresh()
+    const { data } = createBooking(before, charlie(before), { ...partial, subjectId: 2, durationHours: 2 }, { now: NOW })
+    expect(data).toMatchObject({ hourlyPriceSnapshot: 450, totalPrice: 900 })
+  })
+
+  it('stores optional lecture-file details with the booking', () => {
+    const before = fresh()
+    const files = [{ name: 'week5-recursion.pdf', size: 245_760, type: 'application/pdf' }]
+    expect(createBooking(before, charlie(before), { ...partial, attachments: files }, { now: NOW }).data.attachments).toEqual(
+      files,
+    )
+    expect(createBooking(before, charlie(before), partial, { now: NOW }).data.attachments).toEqual([])
+  })
+
+  it('rejects more than the allowed number of files with 400', () => {
+    const before = fresh()
+    const files = Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, i) => ({ name: `f${i}.pdf`, size: 1, type: 'application/pdf' }))
+    expect(apiErrorOf(() => createBooking(before, charlie(before), { ...partial, attachments: files }, { now: NOW })).status).toBe(
+      400,
+    )
+  })
+
+  it('rejects a file over the size limit with 400 and names it', () => {
+    const before = fresh()
+    const files = [{ name: 'huge-slides.pptx', size: MAX_ATTACHMENT_BYTES + 1, type: 'application/vnd.ms-powerpoint' }]
+    const err = apiErrorOf(() => createBooking(before, charlie(before), { ...partial, attachments: files }, { now: NOW }))
+    expect(err.status).toBe(400)
+    expect(err.message).toMatch(/huge-slides\.pptx/)
   })
 
   it('slices the window into whole-hour blocks either side (BR-06)', () => {
@@ -326,13 +421,22 @@ describe('listTutorDirectory (FR-07)', () => {
 
   it('lists approved tutors with subjects, rate and future availability', () => {
     const alice = listTutorDirectory(db, { now: NOW }).find((t) => t.user.id === ALICE)!
-    expect(alice.profile.hourlyPrice).toBe(40)
-    expect(alice.subjects.map((s) => s.name)).toEqual(['Python Basics', 'Data Structures'])
+    expect(alice.subjects.map((s) => [s.name, s.hourlyPrice])).toEqual([
+      ['Python Basics', 400],
+      ['Data Structures', 450],
+    ])
     expect(alice.availabilities.length).toBeGreaterThan(0)
   })
 
   it('filters by subject', () => {
     expect(listTutorDirectory(db, { now: NOW, subjectId: 3 }).map((t) => t.user.id)).toEqual([BOB])
+  })
+
+  it('filters by the level a tutor teaches, combined with the subject', () => {
+    expect(listTutorDirectory(db, { now: NOW, level: 'GRADUATE' }).map((t) => t.user.id)).toEqual([BOB])
+    expect(listTutorDirectory(db, { now: NOW, level: 'HIGH_SCHOOL' }).map((t) => t.user.id)).toEqual([ALICE, BOB])
+    // Bob teaches Calculus I to high-school students but Linear Algebra only at university.
+    expect(listTutorDirectory(db, { now: NOW, subjectId: 4, level: 'HIGH_SCHOOL' })).toEqual([])
   })
 
   it('filters tutor directory by tutorId and local date (FR-07, SDS §4.2)', () => {

@@ -41,6 +41,7 @@ describe('groupScheduleByDay', () => {
     hourlyPriceSnapshot: 40,
     totalPrice: 40,
     notes: null,
+    attachments: [],
     lessonSummary: null,
     status: 'CONFIRMED',
     paymentStatus: 'SUCCESS',

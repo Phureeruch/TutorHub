@@ -1,25 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { formatDay, formatHours, formatMoney, formatRate, formatTime, toDateInputValue } from './format'
+import {
+  formatBytes,
+  formatDay,
+  formatHours,
+  formatMoney,
+  formatRate,
+  formatRateRange,
+  formatTime,
+  initialsOf,
+  toDateInputValue,
+} from './format'
 
 const iso = (hh: number, mm = 0) => new Date(2026, 10, 13, hh, mm).toISOString()
 
 describe('formatMoney', () => {
-  it('drops cents for whole amounts', () => {
-    expect(formatMoney(40)).toBe('$40')
+  it('formats Thai baht and drops satang for whole amounts', () => {
+    expect(formatMoney(400)).toBe('฿400')
   })
 
   it('keeps two decimals otherwise', () => {
-    expect(formatMoney(37.5)).toBe('$37.50')
+    expect(formatMoney(337.5)).toBe('฿337.50')
   })
 
   it('groups thousands', () => {
-    expect(formatMoney(1250)).toBe('$1,250')
+    expect(formatMoney(1250)).toBe('฿1,250')
   })
 })
 
 describe('formatRate', () => {
   it('appends per hour', () => {
-    expect(formatRate(40)).toBe('$40/hr')
+    expect(formatRate(400)).toBe('฿400/hr')
   })
 })
 
@@ -48,5 +58,37 @@ describe('formatHours', () => {
 describe('toDateInputValue', () => {
   it('formats a local date for <input type=date>', () => {
     expect(toDateInputValue(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05')
+  })
+})
+
+describe('formatBytes', () => {
+  it.each([
+    [512, '512 B'],
+    [245_760, '240 KB'],
+    [3_670_016, '3.5 MB'],
+  ])('%i → %s', (bytes, text) => {
+    expect(formatBytes(bytes)).toBe(text)
+  })
+})
+
+describe('initialsOf (profile icon)', () => {
+  it('uses the first letters of up to two words', () => {
+    expect(initialsOf('Admin User')).toBe('AU')
+    expect(initialsOf('  charlie ')).toBe('C')
+    expect(initialsOf('Ann Marie de Vries')).toBe('AM')
+  })
+})
+
+describe('formatRateRange (tutor card header)', () => {
+  it('shows one rate when every subject costs the same', () => {
+    expect(formatRateRange([400, 400])).toBe('฿400/hr')
+  })
+
+  it('shows the lowest to highest rate when they differ', () => {
+    expect(formatRateRange([450, 350, 400])).toBe('฿350–฿450/hr')
+  })
+
+  it('is empty when the tutor has no priced subjects', () => {
+    expect(formatRateRange([])).toBe('')
   })
 })

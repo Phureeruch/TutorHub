@@ -2,7 +2,10 @@ import { createSeedDb } from '../data/seedData'
 import type { MockDb } from '../types/types'
 
 export const STORAGE_KEY = 'tutorhub.mock.v1'
-const VERSION = 1
+// Bump on any MockDb shape change: older saves then fall back to seed data.
+// v2: per-subject rates (TutorSubject.hourlyPrice) and booking attachments.
+// v3: per-subject levels and topics.
+export const STORAGE_VERSION = 3
 
 export interface KeyValueStore {
   getItem(key: string): string | null
@@ -31,6 +34,8 @@ function isValidDb(value: unknown): value is MockDb {
   const ids = db.nextIds as Record<string, unknown> | undefined
   if (typeof ids !== 'object' || ids === null || !ID_COUNTERS.every((key) => Number.isInteger(ids[key]))) return false
   const typed = value as MockDb
+  if (!typed.tutorSubjects.every((ts) => typeof ts.hourlyPrice === 'number' && Array.isArray(ts.levels))) return false
+  if (!typed.bookings.every((b) => Array.isArray(b.attachments))) return false
   return typed.users
     .filter((u) => u.role === 'TUTOR')
     .every((tutor) => typed.tutorProfiles.some((p) => p.userId === tutor.id))
@@ -42,7 +47,7 @@ export function loadState(store: KeyValueStore, now: Date): AppState {
     const raw = store.getItem(STORAGE_KEY)
     if (!raw) return seedState(now)
     const parsed = JSON.parse(raw) as { version?: number } & Partial<AppState>
-    if (parsed.version !== VERSION || !isValidDb(parsed.db)) return seedState(now)
+    if (parsed.version !== STORAGE_VERSION || !isValidDb(parsed.db)) return seedState(now)
     const db = parsed.db
     const currentUserId = db.users.some((u) => u.id === parsed.currentUserId) ? parsed.currentUserId! : null
     return { db, currentUserId }
@@ -61,7 +66,7 @@ export function readLatestDb(store: KeyValueStore, inMemory: MockDb): MockDb {
     const raw = store.getItem(STORAGE_KEY)
     if (!raw) return inMemory
     const parsed = JSON.parse(raw) as { version?: number; db?: unknown }
-    return parsed.version === VERSION && isValidDb(parsed.db) ? parsed.db : inMemory
+    return parsed.version === STORAGE_VERSION && isValidDb(parsed.db) ? parsed.db : inMemory
   } catch {
     return inMemory
   }
@@ -69,7 +74,7 @@ export function readLatestDb(store: KeyValueStore, inMemory: MockDb): MockDb {
 
 export function saveState(store: KeyValueStore, state: AppState): void {
   try {
-    store.setItem(STORAGE_KEY, JSON.stringify({ version: VERSION, ...state }))
+    store.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, ...state }))
   } catch {
     // Storage can be full or blocked (private mode); the in-memory state still works.
   }

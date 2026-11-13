@@ -9,12 +9,16 @@
 import type {
   Availability,
   Booking,
+  BookingAttachment,
   CreateAvailabilityRequest,
   CreateBookingRequest,
   MockDb,
   RegisterRequest,
   Subject,
+  TaughtSubjectInput,
+  TeachingLevel,
   TutorProfile,
+  TutorSubject,
   UpdateTutorProfileRequest,
   User,
 } from '../types/types'
@@ -28,7 +32,9 @@ import {
   sliceAvailabilityAfterBooking,
   validateAvailabilityInput,
 } from '../utils/bookingRules'
+import { attachmentError } from '../utils/attachments'
 import { dayKey } from '../utils/format'
+import { isTeachingLevel, orderLevels } from '../utils/levels'
 
 export type ApiStatus = 400 | 401 | 403 | 404 | 409
 
@@ -68,12 +74,23 @@ function profileOf(db: MockDb, tutorId: number): TutorProfile {
   return profile
 }
 
-export function subjectsOfTutor(db: MockDb, tutorId: number): Subject[] {
+/** A subject a tutor teaches, with that tutor's rate, levels and topics for it. */
+export type RatedSubject = Subject & Pick<TutorSubject, 'hourlyPrice' | 'levels' | 'topics'>
+
+export function subjectsOfTutor(db: MockDb, tutorId: number): RatedSubject[] {
   const profile = db.tutorProfiles.find((p) => p.userId === tutorId)
   if (!profile) return []
-  const ids = db.tutorSubjects.filter((ts) => ts.tutorProfileId === profile.id).map((ts) => ts.subjectId)
-  return db.subjects.filter((s) => ids.includes(s.id))
+  // Index this tutor's links once: discovery calls this for every tutor on every render.
+  const links = new Map(
+    db.tutorSubjects.filter((ts) => ts.tutorProfileId === profile.id).map((ts) => [ts.subjectId, ts]),
+  )
+  return db.subjects.flatMap((subject) => {
+    const link = links.get(subject.id)
+    return link ? [{ ...subject, hourlyPrice: link.hourlyPrice, levels: link.levels, topics: link.topics }] : []
+  })
 }
+
+export const MAX_TOPICS_LENGTH = 200
 
 const byStartTime = <T extends { startTime: string }>(a: T, b: T) =>
   new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
@@ -149,24 +166,41 @@ export function updateTutorProfile(
   now: Date = new Date(),
 ): Mutation<TutorProfile> {
   requireRole(actor, 'TUTOR')
-  if (!Number.isFinite(req.hourlyPrice) || req.hourlyPrice <= 0) {
-    throw new ApiError(400, 'Hourly rate must be more than 0.')
+  // One entry per subject; a repeated subject keeps its last entry. Unknown subjects are ignored.
+  const bySubject = new Map<number, TaughtSubjectInput>()
+  for (const entry of req.subjects) {
+    if (db.subjects.some((s) => s.id === entry.subjectId)) bySubject.set(entry.subjectId, entry)
   }
-  const subjectIds = [...new Set(req.subjectIds)].filter((id) => db.subjects.some((s) => s.id === id))
-  if (subjectIds.length === 0) throw new ApiError(400, 'Choose at least one subject you teach.')
+  if (bySubject.size === 0) throw new ApiError(400, 'Choose at least one subject you teach.')
+  for (const { subjectId, hourlyPrice, levels = [], topics = '' } of bySubject.values()) {
+    const name = db.subjects.find((s) => s.id === subjectId)?.name ?? 'This subject'
+    if (!Number.isFinite(hourlyPrice) || hourlyPrice <= 0) {
+      throw new ApiError(400, `${name}: hourly rate must be more than 0.`)
+    }
+    if (!levels.every(isTeachingLevel)) throw new ApiError(400, `${name}: unknown level.`)
+    if (topics.trim().length > MAX_TOPICS_LENGTH) {
+      throw new ApiError(400, `${name}: keep topics to ${MAX_TOPICS_LENGTH} characters.`)
+    }
+  }
 
   const current = profileOf(db, actor.id)
   const profile: TutorProfile = {
     ...current,
     bio: req.bio === undefined ? current.bio : req.bio.trim() || null,
-    hourlyPrice: req.hourlyPrice,
     updatedAt: now.toISOString(),
   }
 
   let nextTutorSubjectId = db.nextIds.tutorSubject
-  const links = subjectIds
-    .sort((a, b) => a - b)
-    .map((subjectId) => ({ id: nextTutorSubjectId++, tutorProfileId: profile.id, subjectId }))
+  const links: TutorSubject[] = [...bySubject.values()]
+    .sort((a, b) => a.subjectId - b.subjectId)
+    .map(({ subjectId, hourlyPrice, levels = [], topics = '' }) => ({
+      id: nextTutorSubjectId++,
+      tutorProfileId: profile.id,
+      subjectId,
+      hourlyPrice,
+      levels: orderLevels(levels),
+      topics: topics.trim() || null,
+    }))
 
   // Bookings are deliberately untouched: their price snapshot is frozen (BR-09).
   return {
@@ -247,6 +281,16 @@ export interface CreateBookingOptions {
   simulateConflict?: boolean
 }
 
+/**
+ * Lecture files are optional. The mock keeps only name, size and type; a real
+ * backend needs file storage plus an attachments table (backend-api-guide.md §6).
+ */
+function validateAttachments(files: BookingAttachment[]): BookingAttachment[] {
+  const error = attachmentError(files)
+  if (error) throw new ApiError(400, error)
+  return files.map(({ name, size, type }) => ({ name, size, type }))
+}
+
 export const CONFLICT_MESSAGE = 'This time is no longer available. Your payment was not taken.'
 
 export function createBooking(
@@ -268,9 +312,9 @@ export function createBooking(
 
   const tutor = findUser(db, req.tutorId)
   if (tutor.role !== 'TUTOR' || !tutor.isApproved) throw new ApiError(404, 'Tutor not found.')
-  if (!subjectsOfTutor(db, tutor.id).some((s) => s.id === req.subjectId)) {
-    throw new ApiError(400, `${tutor.name} does not teach this subject.`)
-  }
+  const subject = subjectsOfTutor(db, tutor.id).find((s) => s.id === req.subjectId)
+  if (!subject) throw new ApiError(400, `${tutor.name} does not teach this subject.`)
+  const attachments = validateAttachments(req.attachments ?? [])
 
   // --- Transaction boundary: everything below is all-or-nothing. ---
   const container = db.availabilities.find((a) => a.tutorId === tutor.id && isWithin(a, start, end))
@@ -283,8 +327,8 @@ export function createBooking(
   }
   if (simulateConflict) throw new ApiError(409, CONFLICT_MESSAGE)
 
-  // Mock payment always succeeds in Sprint 1; the price is snapshotted here (BR-09).
-  const hourlyPriceSnapshot = profileOf(db, tutor.id).hourlyPrice
+  // Mock payment always succeeds in Sprint 1; the subject's rate is snapshotted here (BR-09).
+  const hourlyPriceSnapshot = subject.hourlyPrice
   const stamp = now.toISOString()
   const booking: Booking = {
     id: db.nextIds.booking,
@@ -297,6 +341,7 @@ export function createBooking(
     hourlyPriceSnapshot,
     totalPrice: calculateTotalPrice(hourlyPriceSnapshot, req.durationHours),
     notes: req.notes?.trim() || null,
+    attachments,
     lessonSummary: null,
     status: 'CONFIRMED',
     paymentStatus: 'SUCCESS',
@@ -359,7 +404,7 @@ export function getBookingById(db: MockDb, actor: User, bookingId: number): Book
 export interface TutorListing {
   user: User
   profile: TutorProfile
-  subjects: Subject[]
+  subjects: RatedSubject[]
   availabilities: Availability[]
 }
 
@@ -369,9 +414,17 @@ export interface TutorDirectoryFilter {
   tutorId?: number
   /** YYYY-MM-DD, local calendar day. */
   date?: string
+  /**
+   * Keeps tutors who teach some subject (the chosen one, if any) at this level.
+   * Not in SDS §4.2's query params yet (backend-api-guide.md §5.2).
+   */
+  level?: TeachingLevel
 }
 
-export function listTutorDirectory(db: MockDb, { now, subjectId, tutorId, date }: TutorDirectoryFilter): TutorListing[] {
+export function listTutorDirectory(
+  db: MockDb,
+  { now, subjectId, tutorId, date, level }: TutorDirectoryFilter,
+): TutorListing[] {
   return db.users
     .filter((u) => u.role === 'TUTOR' && u.isApproved && (tutorId === undefined || u.id === tutorId))
     .flatMap((user) => {
@@ -392,7 +445,13 @@ export function listTutorDirectory(db: MockDb, { now, subjectId, tutorId, date }
         },
       ]
     })
-    .filter((t) => subjectId === undefined || t.subjects.some((s) => s.id === subjectId))
+    .filter(
+      (t) =>
+        (subjectId === undefined && level === undefined) ||
+        t.subjects.some(
+          (s) => (subjectId === undefined || s.id === subjectId) && (level === undefined || s.levels.includes(level)),
+        ),
+    )
     // Searching by date means "who can I book that day": tutors with nothing open drop out.
     .filter((t) => !date || t.availabilities.length > 0)
 }

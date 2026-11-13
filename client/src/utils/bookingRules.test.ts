@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { Availability, Booking } from '../types/types'
 import {
   calculateTotalPrice,
-  getValidDurations,
   getValidStartSlots,
   hasBookingOverlap,
   isAlignedBookingStart,
@@ -35,6 +34,7 @@ const booking = (overrides: Partial<Booking>): Booking => ({
   hourlyPriceSnapshot: 40,
   totalPrice: 40,
   notes: null,
+  attachments: [],
   lessonSummary: null,
   status: 'CONFIRMED',
   paymentStatus: 'SUCCESS',
@@ -101,18 +101,6 @@ describe('getValidStartSlots (BR-05)', () => {
 
   it('drops start times that are not in the future when now is given', () => {
     expect(getValidStartSlots(block, t(10)).map(hhmm)).toEqual(['10:30', '11:30'])
-  })
-})
-
-describe('getValidDurations (BR-05)', () => {
-  const end = t(12, 30)
-
-  it.each([
-    [t(9, 30), [1, 2, 3]],
-    [t(10, 30), [1, 2]],
-    [t(11, 30), [1]],
-  ])('from %s offers whole hours up to the block end', (start, expected) => {
-    expect(getValidDurations(start, end)).toEqual(expected)
   })
 })
 

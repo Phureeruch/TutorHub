@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError, createBooking, verifyEmail } from '../api/mockApi'
 import { createSeedDb } from '../data/seedData'
-import { loadState, readLatestDb, saveState, STORAGE_KEY, type KeyValueStore } from './persistence'
+import { loadState, readLatestDb, saveState, STORAGE_KEY, STORAGE_VERSION, type KeyValueStore } from './persistence'
 
 const NOW = new Date(2026, 10, 12, 8, 0)
 
@@ -25,6 +25,26 @@ describe('loadState', () => {
 
   it('falls back to seed data when storage holds corrupt JSON', () => {
     expect(loadState(memoryStore({ [STORAGE_KEY]: '{oops' }), NOW).db).toEqual(createSeedDb(NOW))
+  })
+
+  it('falls back to seed data for a save from before per-subject rates (version 1)', () => {
+    const old = structuredClone(createSeedDb(NOW))
+    const store = memoryStore({ [STORAGE_KEY]: JSON.stringify({ version: 1, db: old, currentUserId: 3 }) })
+    expect(loadState(store, NOW).currentUserId).toBeNull()
+    expect(STORAGE_VERSION).toBeGreaterThan(1)
+  })
+
+  it('falls back to seed data for a save from before subject levels and topics (version 2)', () => {
+    const old = structuredClone(createSeedDb(NOW))
+    const store = memoryStore({ [STORAGE_KEY]: JSON.stringify({ version: 2, db: old, currentUserId: 3 }) })
+    expect(loadState(store, NOW).currentUserId).toBeNull()
+  })
+
+  it('rejects a current-version save whose subject links lack levels', () => {
+    const db = structuredClone(createSeedDb(NOW)) as unknown as { tutorSubjects: Record<string, unknown>[] }
+    delete db.tutorSubjects[0].levels
+    const store = memoryStore({ [STORAGE_KEY]: JSON.stringify({ version: STORAGE_VERSION, db, currentUserId: 3 }) })
+    expect(loadState(store, NOW).currentUserId).toBeNull()
   })
 
   it('falls back to seed data when the saved version is unknown', () => {
@@ -51,7 +71,7 @@ describe('loadState', () => {
     const store = memoryStore()
     const db = structuredClone(createSeedDb(NOW)) as unknown as Record<string, unknown>
     corrupt(db)
-    store.setItem(STORAGE_KEY, JSON.stringify({ version: 1, db, currentUserId: 3 }))
+    store.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, db, currentUserId: 3 }))
     const state = loadState(store, NOW)
     expect(state.db).toEqual(createSeedDb(NOW))
     expect(state.currentUserId).toBeNull()

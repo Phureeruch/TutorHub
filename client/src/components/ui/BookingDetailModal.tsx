@@ -1,7 +1,8 @@
 import { ApiError, getBookingById } from '../../api/mockApi'
 import { useCurrentUser, useMockApp } from '../../context/appContext'
 import type { Booking } from '../../types/types'
-import { formatDay, formatHours, formatMoney, formatRate, formatTime, formatTimeRange } from '../../utils/format'
+import { formatBytes, formatDay, formatHours, formatMoney, formatRate, formatTime, formatTimeRange } from '../../utils/format'
+import { attachmentKey } from '../../utils/attachments'
 import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
 import { Modal } from './Modal'
 import { BookingStatusTags } from './PriceSnapshot'
@@ -64,13 +65,27 @@ export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalPro
         <dt>Total paid</dt>
         <dd>{formatMoney(booking.totalPrice)}</dd>
         <dt>Tutor&rsquo;s rate now</dt>
-        <dd>{rateNow(currentRateOf(db, booking.tutorId), booking.hourlyPriceSnapshot)}</dd>
+        <dd>{rateNow(currentRateOf(db, booking.tutorId, booking.subjectId), booking.hourlyPriceSnapshot)}</dd>
         <dt>Status</dt>
         <dd>
           <BookingStatusTags booking={booking} />
         </dd>
         <dt>Student notes</dt>
         <dd>{booking.notes ?? 'None'}</dd>
+        <dt>Lecture files</dt>
+        <dd>
+          {booking.attachments.length === 0 ? (
+            'None'
+          ) : (
+            <ul className="th-detail-files">
+              {booking.attachments.map((f) => (
+                <li key={attachmentKey(f)}>
+                  {f.name} <span className="text-muted-ink small">{formatBytes(f.size)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </dd>
         <dt>Confirmed</dt>
         <dd>
           {formatDay(booking.createdAt)}, {formatTime(booking.createdAt)}

@@ -53,7 +53,7 @@ export function StudentBookingsView() {
                   </button>
                 </div>
               </div>
-              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId)} />
+              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId, b.subjectId)} />
             </li>
           ))}
         </ol>

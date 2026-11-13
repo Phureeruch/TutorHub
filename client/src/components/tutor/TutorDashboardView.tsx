@@ -1,10 +1,11 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { ApiError, listBookings, subjectsOfTutor } from '../../api/mockApi'
+import { ApiError, listBookings, MAX_TOPICS_LENGTH, subjectsOfTutor } from '../../api/mockApi'
 import { useCurrentUser, useMockApp } from '../../context/appContext'
 import { useFieldError } from '../../hooks/useFieldError'
 import { useNow } from '../../hooks/useNow'
-import type { TutorProfile, User } from '../../types/types'
-import { formatDay, formatHours, formatRate, formatTimeRange, toDateInputValue } from '../../utils/format'
+import type { TeachingLevel, TutorProfile, User } from '../../types/types'
+import { CURRENCY_SYMBOL, formatDay, formatHours, formatRate, formatTimeRange, toDateInputValue } from '../../utils/format'
+import { LEVEL_LABEL, orderLevels, TEACHING_LEVELS } from '../../utils/levels'
 import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
@@ -209,39 +210,85 @@ function AvailabilitySection({ tutor }: { tutor: User }) {
 }
 
 // ---------------------------------------------------------------------------
-// Section A: profile, subjects & hourly rate (FR-05, BR-09 hint)
+// Section A: profile, subjects & per-subject hourly rates (FR-05, BR-09 hint)
 // ---------------------------------------------------------------------------
+
+const rateInputId = (subjectId: number) => `profile-rate-${subjectId}`
+const topicsInputId = (subjectId: number) => `profile-topics-${subjectId}`
+
+/** One ticked subject as typed; the rate stays a string until save so "" can be flagged. */
+interface SubjectDraft {
+  rate: string
+  levels: TeachingLevel[]
+  topics: string
+}
 
 function ProfileForm({ tutor, profile }: { tutor: User; profile: TutorProfile }) {
   const { db, updateTutorProfile } = useMockApp()
+  const taughtNow = subjectsOfTutor(db, tutor.id)
   const [bio, setBio] = useState(profile.bio ?? '')
-  const [rate, setRate] = useState(String(profile.hourlyPrice))
-  const [subjectIds, setSubjectIds] = useState<number[]>(() => subjectsOfTutor(db, tutor.id).map((s) => s.id))
+  // Keyed by subject id; a key exists only while the subject is ticked.
+  const [drafts, setDrafts] = useState<Record<number, SubjectDraft>>(() =>
+    Object.fromEntries(
+      taughtNow.map((s) => [s.id, { rate: String(s.hourlyPrice), levels: s.levels, topics: s.topics ?? '' }]),
+    ),
+  )
   const [saved, setSaved] = useState(false)
-  const rateRef = useRef<HTMLInputElement>(null)
-  const { error, setError, fail, invalidProps, clearField } = useFieldError({ rate: rateRef })
+  // Field names are the inputs' element ids, so a failed field can be focused by id.
+  const { error, setError, fail, invalidProps, clearField } = useFieldError<string>({})
+  // Rate inputs come and go with their checkbox, so they are focused by id rather than a fixed ref map.
+  const failAndFocus = (next: { field: string | null; message: string }) => {
+    fail(next)
+    if (next.field) document.getElementById(next.field)?.focus()
+  }
 
   const toggleSubject = (id: number) =>
-    setSubjectIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+    setDrafts((current) => {
+      const next = { ...current }
+      if (id in next) delete next[id]
+      else next[id] = { rate: '', levels: [], topics: '' }
+      return next
+    })
+
+  const editDraft = (id: number, change: Partial<SubjectDraft>) =>
+    setDrafts((current) => ({ ...current, [id]: { ...current[id], ...change } }))
+
+  const toggleLevel = (id: number, level: TeachingLevel) => {
+    const { levels } = drafts[id]
+    editDraft(id, { levels: orderLevels(levels.includes(level) ? levels.filter((l) => l !== level) : [...levels, level]) })
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setSaved(false)
-    const hourlyPrice = Number(rate)
-    if (!rate.trim() || !Number.isFinite(hourlyPrice) || hourlyPrice <= 0) {
-      return fail({ field: 'rate', message: 'Hourly rate must be more than 0.' })
+    const taughtSubjects = db.subjects.filter((s) => s.id in drafts)
+    if (taughtSubjects.length === 0) {
+      return failAndFocus({ field: null, message: 'Choose at least one subject you teach.' })
+    }
+    // Checked in display order so focus lands on the first problem.
+    for (const s of taughtSubjects) {
+      const { rate } = drafts[s.id]
+      const value = Number(rate)
+      if (!rate.trim() || !Number.isFinite(value) || value <= 0) {
+        return failAndFocus({ field: rateInputId(s.id), message: `${s.name}: enter an hourly rate more than 0.` })
+      }
     }
     setError(null)
     try {
-      await updateTutorProfile({ bio, hourlyPrice, subjectIds })
+      await updateTutorProfile({
+        bio,
+        subjects: taughtSubjects.map((s) => ({
+          subjectId: s.id,
+          hourlyPrice: Number(drafts[s.id].rate),
+          levels: drafts[s.id].levels,
+          topics: drafts[s.id].topics,
+        })),
+      })
       setSaved(true)
     } catch (err) {
-      // e.g. no subject chosen: that is a fieldset, not one input, so no field is flagged.
-      fail({ field: null, message: messageOf(err) })
+      failAndFocus({ field: null, message: messageOf(err) })
     }
   }
-
-  const rateChanged = Number(rate) !== profile.hourlyPrice && Number(rate) > 0
 
   return (
     <form className="th-panel th-profile-form" onSubmit={handleSubmit} noValidate>
@@ -263,52 +310,109 @@ function ProfileForm({ tutor, profile }: { tutor: User; profile: TutorProfile })
         </div>
       </div>
 
-      <div className="mb-4">
-        <label className="form-label" htmlFor="profile-rate">
-          Hourly rate (USD)
-        </label>
-        <div className="input-group th-rate-input">
-          <span className="input-group-text">$</span>
-          <input
-            id="profile-rate"
-            ref={rateRef}
-            type="number"
-            inputMode="decimal"
-            min={1}
-            step={1}
-            className="form-control"
-            value={rate}
-            onChange={(e) => {
-              setRate(e.target.value)
-              clearField('rate')
-            }}
-            aria-describedby="profile-rate-hint"
-            {...invalidProps('rate')}
-          />
-          <span className="input-group-text">/hr</span>
-        </div>
-        <div id="profile-rate-hint" className={`form-text${rateChanged ? ' th-hint-strong' : ''}`}>
-          {rateChanged
-            ? `New bookings will cost ${formatRate(Number(rate))}. Lessons already booked keep the ${formatRate(profile.hourlyPrice)} the student paid.`
-            : 'A new rate only applies to new bookings. Lessons already booked keep the price the student paid.'}
-        </div>
-      </div>
-
-      <fieldset className="mb-4">
-        <legend className="form-label fs-6">Subjects you teach</legend>
-        <div className="d-flex flex-wrap gap-2">
-          {db.subjects.map((s) => (
-            <label key={s.id} className="th-pill th-pill-radio th-pill-check">
-              <input
-                type="checkbox"
-                className="visually-hidden"
-                checked={subjectIds.includes(s.id)}
-                onChange={() => toggleSubject(s.id)}
-              />
-              {s.name}
-            </label>
-          ))}
-        </div>
+      <fieldset className="mb-4" aria-describedby="profile-rates-hint">
+        <legend className="form-label fs-6 mb-1">Subjects you teach</legend>
+        <p id="profile-rates-hint" className="form-text mt-0 mb-2">
+          Tick each subject you teach. Set its rate in baht per hour, who you teach it to, and what you cover, so
+          students can pick the right tutor. A new rate only applies to new bookings; lessons already booked keep the
+          price the student paid.
+        </p>
+        <ul className="th-rate-list">
+          {db.subjects.map((s) => {
+            const draft = drafts[s.id]
+            const isTaught = draft !== undefined
+            const id = rateInputId(s.id)
+            const topicsId = topicsInputId(s.id)
+            const savedRate = taughtNow.find((t) => t.id === s.id)?.hourlyPrice
+            const typed = Number(draft?.rate)
+            const changed = isTaught && savedRate !== undefined && typed > 0 && typed !== savedRate
+            return (
+              <li key={s.id} className={`th-rate-row${isTaught ? ' is-taught' : ''}`}>
+                <label className="th-rate-subject">
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={isTaught}
+                    onChange={() => toggleSubject(s.id)}
+                  />
+                  {s.name}
+                </label>
+                {isTaught && (
+                  <div className="th-rate-field">
+                    <label className="visually-hidden" htmlFor={id}>
+                      {`Rate for ${s.name}, baht per hour`}
+                    </label>
+                    <div className="input-group th-rate-input">
+                      <span className="input-group-text" aria-hidden="true">
+                        {CURRENCY_SYMBOL}
+                      </span>
+                      <input
+                        id={id}
+                        type="number"
+                        inputMode="decimal"
+                        min={1}
+                        step={1}
+                        className="form-control"
+                        placeholder="400"
+                        value={draft.rate}
+                        onChange={(e) => {
+                          editDraft(s.id, { rate: e.target.value })
+                          clearField(id)
+                        }}
+                        {...invalidProps(id)}
+                      />
+                      <span className="input-group-text" aria-hidden="true">
+                        /hr
+                      </span>
+                    </div>
+                    {changed && (
+                      <p className="th-rate-change">
+                        New bookings {formatRate(typed)}. Booked lessons keep {formatRate(savedRate)}.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {isTaught && (
+                  <div className="th-rate-details">
+                    <div role="group" aria-label={`Levels for ${s.name}`}>
+                      <span className="th-rate-detail-label" aria-hidden="true">
+                        Levels
+                      </span>
+                      <div className="th-level-picks">
+                        {TEACHING_LEVELS.map((level) => (
+                          <label key={level} className="th-pill th-pill-check">
+                            <input
+                              type="checkbox"
+                              className="form-check-input m-0"
+                              checked={draft.levels.includes(level)}
+                              onChange={() => toggleLevel(s.id, level)}
+                            />
+                            {LEVEL_LABEL[level]}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="th-rate-detail-label" htmlFor={topicsId}>
+                        Topics<span className="visually-hidden"> for {s.name}</span>{' '}
+                        <span className="fw-normal text-muted-ink">(optional)</span>
+                      </label>
+                      <textarea
+                        id={topicsId}
+                        className="form-control"
+                        rows={2}
+                        maxLength={MAX_TOPICS_LENGTH}
+                        placeholder="What you cover, e.g. exam prep, past papers"
+                        value={draft.topics}
+                        onChange={(e) => editDraft(s.id, { topics: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       </fieldset>
 
       <div aria-live="polite">
@@ -393,7 +497,7 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
                   </button>
                 </div>
               </div>
-              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId)} />
+              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId, b.subjectId)} />
             </li>
           ))}
         </ol>

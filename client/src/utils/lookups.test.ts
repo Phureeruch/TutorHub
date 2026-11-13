@@ -21,11 +21,16 @@ describe('lookups', () => {
     expect(subjectNameOf(db, 999)).toBe('Unknown subject')
   })
 
-  it("reads a tutor's current rate", () => {
-    expect(currentRateOf(db, 2)).toBe(35)
+  it("reads a tutor's current rate for one subject", () => {
+    expect(currentRateOf(db, 2, 3)).toBe(350)
+    expect(currentRateOf(db, 2, 4)).toBe(380)
+  })
+
+  it('returns null for a subject the tutor does not teach', () => {
+    expect(currentRateOf(db, 2, 1)).toBeNull()
   })
 
   it('returns null when a tutor has no profile', () => {
-    expect(currentRateOf(db, 3)).toBeNull()
+    expect(currentRateOf(db, 3, 1)).toBeNull()
   })
 })

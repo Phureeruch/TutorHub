@@ -6,10 +6,10 @@ const db = createSeedDb(new Date(2026, 10, 12, 8))
 
 describe('computeAdminSummary (F-07)', () => {
   it('summarises the seed school', () => {
-    // Seed: 2 bookings ($40 + $60), 2 approved tutors, Charlie verified, Diana not.
+    // Seed: 2 bookings (฿400 + ฿600), 2 approved tutors, Charlie verified, Diana not.
     expect(computeAdminSummary(db)).toEqual({
       totalBookings: 2,
-      mockRevenue: 100,
+      mockRevenue: 1000,
       activeTutors: 2,
       verifiedStudents: 1,
       totalStudents: 2,
@@ -23,7 +23,7 @@ describe('computeAdminSummary (F-07)', () => {
     }
     const summary = computeAdminSummary(withCancelled)
     expect(summary.totalBookings).toBe(2)
-    expect(summary.mockRevenue).toBe(60)
+    expect(summary.mockRevenue).toBe(600)
   })
 
   it('does not count unapproved tutors as active', () => {

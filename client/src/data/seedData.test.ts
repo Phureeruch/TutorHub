@@ -53,6 +53,25 @@ describe('createSeedDb (F-08, SRS Section 9)', () => {
     }
   })
 
+  it('prices each taught subject separately, in baht', () => {
+    const rate = (tutorName: string, subjectName: string) => {
+      const profile = db.tutorProfiles.find((p) => p.userId === byName(tutorName)!.id)!
+      const subject = db.subjects.find((s) => s.name === subjectName)!
+      return db.tutorSubjects.find((ts) => ts.tutorProfileId === profile.id && ts.subjectId === subject.id)?.hourlyPrice
+    }
+    expect(rate('Alice', 'Python Basics')).toBe(400)
+    expect(rate('Alice', 'Data Structures')).toBe(450)
+    expect(rate('Bob', 'Calculus I')).toBe(350)
+    expect(rate('Bob', 'Linear Algebra')).toBe(380)
+  })
+
+  it('describes the levels and topics for every taught subject', () => {
+    for (const link of db.tutorSubjects) {
+      expect(link.levels.length).toBeGreaterThan(0)
+      expect(link.topics).toBeTruthy()
+    }
+  })
+
   it('keeps every availability BR-04 compliant and in the future', () => {
     expect(db.availabilities.length).toBeGreaterThan(0)
     for (const a of db.availabilities) {
@@ -85,12 +104,17 @@ describe('createSeedDb (F-08, SRS Section 9)', () => {
     }
   })
 
-  it('seeds at least one booking whose snapshot differs from the current tutor rate (BR-09 demo)', () => {
+  it('seeds at least one booking whose snapshot differs from the current subject rate (BR-09 demo)', () => {
     const differs = db.bookings.some((b) => {
       const profile = db.tutorProfiles.find((p) => p.userId === b.tutorId)
-      return profile !== undefined && profile.hourlyPrice !== b.hourlyPriceSnapshot
+      const link = db.tutorSubjects.find((ts) => ts.tutorProfileId === profile?.id && ts.subjectId === b.subjectId)
+      return link !== undefined && link.hourlyPrice !== b.hourlyPriceSnapshot
     })
     expect(differs).toBe(true)
+  })
+
+  it('seeds bookings with no attachments', () => {
+    expect(db.bookings.every((b) => Array.isArray(b.attachments) && b.attachments.length === 0)).toBe(true)
   })
 
   it('never lets a seeded availability overlap a seeded booking of the same tutor (BR-06 slicing)', () => {

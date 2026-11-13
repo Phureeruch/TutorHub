@@ -4,5 +4,9 @@ export const userNameOf = (db: MockDb, id: number) => db.users.find((u) => u.id 
 
 export const subjectNameOf = (db: MockDb, id: number) => db.subjects.find((s) => s.id === id)?.name ?? 'Unknown subject'
 
-export const currentRateOf = (db: MockDb, tutorId: number): number | null =>
-  db.tutorProfiles.find((p) => p.userId === tutorId)?.hourlyPrice ?? null
+/** The tutor's live rate for one subject, or null if they do not teach it. */
+export function currentRateOf(db: MockDb, tutorId: number, subjectId: number): number | null {
+  const profile = db.tutorProfiles.find((p) => p.userId === tutorId)
+  if (!profile) return null
+  return db.tutorSubjects.find((ts) => ts.tutorProfileId === profile.id && ts.subjectId === subjectId)?.hourlyPrice ?? null
+}

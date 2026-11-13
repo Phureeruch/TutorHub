@@ -29,23 +29,20 @@ export function validateAvailabilityInput(startTime: Date, endTime: Date, now?: 
 }
 
 /**
- * BR-05: bookable start times step in whole hours from the block start, so every
- * booking and every leftover piece stays a whole number of hours long.
+ * BR-05: the start of every whole hour in a block, counted from the block's own
+ * start, so every booking and every leftover piece stays a whole number of hours.
  */
-export function getValidStartSlots(availability: Availability, now?: Date): Date[] {
+export function hourStarts(availability: Availability): Date[] {
   const start = new Date(availability.startTime).getTime()
   const end = new Date(availability.endTime).getTime()
-  const slots: Date[] = []
-  for (let s = start; s + HOUR_MS <= end; s += HOUR_MS) {
-    if (!now || s > now.getTime()) slots.push(new Date(s))
-  }
-  return slots
+  const starts: Date[] = []
+  for (let s = start; s + HOUR_MS <= end; s += HOUR_MS) starts.push(new Date(s))
+  return starts
 }
 
-/** BR-05: whole-hour durations from `selectedStart` up to the block end. */
-export function getValidDurations(selectedStart: Date, availabilityEnd: Date): number[] {
-  const maxHours = Math.floor((availabilityEnd.getTime() - selectedStart.getTime()) / HOUR_MS)
-  return Array.from({ length: Math.max(0, maxHours) }, (_, i) => i + 1)
+/** BR-05: bookable start times, i.e. hour starts still in the future when `now` is given. */
+export function getValidStartSlots(availability: Availability, now?: Date): Date[] {
+  return hourStarts(availability).filter((s) => !now || s.getTime() > now.getTime())
 }
 
 export function isAlignedBookingStart(availability: Availability, bookingStart: Date): boolean {

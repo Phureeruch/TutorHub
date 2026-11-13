@@ -1,7 +1,7 @@
 import { HOUR_MS } from '../../utils/bookingRules'
 import { formatTime, formatTimeRange } from '../../utils/format'
 
-export type SegmentKind = 'open' | 'selected' | 'booked'
+export type SegmentKind = 'open' | 'booked'
 
 export interface TrackSegment {
   start: Date
@@ -17,7 +17,7 @@ interface TimeTrackProps {
   compact?: boolean
 }
 
-const KIND_TEXT: Record<SegmentKind, string> = { open: 'open', selected: 'your lesson', booked: 'booked' }
+const KIND_TEXT: Record<SegmentKind, string> = { open: 'open', booked: 'booked' }
 
 /**
  * The hour ruler: TutorHub's one visual signature. Windows are drawn on a
