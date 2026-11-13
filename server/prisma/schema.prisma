@@ -1,6 +1,6 @@
+
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["partialIndexes"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -13,61 +13,155 @@ enum Role {
   ADMIN
 }
 
-enum SlotStatus {
-  AVAILABLE
-  BOOKED
-  CANCELLED
-}
-
 enum BookingStatus {
   CONFIRMED
   CANCELLED
   COMPLETED
 }
 
-model User {
-  id       Int    @id @default(autoincrement())
-  email    String @unique
-  password String
-  name     String
-  role     Role
-
-  slots    TutorSlot[] @relation("TutorSlots")
-  bookings Booking[]   @relation("StudentBookings")
+enum PaymentStatus {
+  SUCCESS
+  REFUNDED_PARTIAL
+  REFUNDED_FULL
 }
 
-model TutorSlot {
-  id      Int  @id @default(autoincrement())
-  tutorId Int
-  tutor   User @relation("TutorSlots", fields: [tutorId], references: [id])
+enum TeachingLevel {
+  HIGH_SCHOOL
+  UNDERGRADUATE
+  GRADUATE
+}
 
-  subject   String
+model User {
+  id              Int      @id @default(autoincrement())
+  email           String   @unique
+  password        String
+  name            String
+  role            Role
+  isEmailVerified Boolean  @default(false)
+  isApproved      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tutorProfile    TutorProfile?
+  availabilities  Availability[]      @relation("TutorAvailabilities")
+  studentBookings Booking[]            @relation("StudentBookings")
+  tutorBookings   Booking[]            @relation("TutorBookings")
+  reviews         Review[]              @relation("StudentReviews")
+  uploads         BookingAttachment[]  @relation("UploadedAttachments")
+}
+
+model Subject {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+
+  tutors   TutorSubject[]
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+}
+
+model TutorProfile {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  bio       String?
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjects TutorSubject[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TutorSubject {
+  id             Int             @id @default(autoincrement())
+  tutorProfileId Int
+  subjectId      Int
+  hourlyPrice    Decimal         @db.Decimal(10, 2)
+  levels         TeachingLevel[] @default([])
+  topics         String?         @db.VarChar(200)
+
+  tutorProfile TutorProfile @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([tutorProfileId, subjectId])
+}
+
+model Availability {
+  id        Int      @id @default(autoincrement())
+  tutorId   Int
   startTime DateTime
   endTime   DateTime
-  price     Decimal    @db.Decimal(10, 2)
-  status    SlotStatus @default(AVAILABLE)
 
-  bookings Booking[]
+  tutor User @relation("TutorAvailabilities", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tutorId, startTime, endTime])
 }
 
 model Booking {
-  id        Int  @id @default(autoincrement())
+  id                  Int           @id @default(autoincrement())
+  studentId           Int
+  tutorId             Int
+  subjectId           Int
+  startTime           DateTime
+  endTime             DateTime
+  durationHours       Int
+  hourlyPriceSnapshot Decimal       @db.Decimal(10, 2)
+  totalPrice          Decimal       @db.Decimal(10, 2)
+  notes               String?
+  lessonSummary       String?
+  status              BookingStatus @default(CONFIRMED)
+  paymentStatus       PaymentStatus @default(SUCCESS)
+  cancelledBy         Role?
+  cancelledAt         DateTime?
+  refundPercentage    Int?
+  refundAmount        Decimal?      @db.Decimal(10, 2)
+
+  student User    @relation("StudentBookings", fields: [studentId], references: [id])
+  tutor   User    @relation("TutorBookings", fields: [tutorId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  review      Review?
+  attachments BookingAttachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId, startTime, endTime])
+  @@index([tutorId, startTime, endTime])
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  bookingId Int      @unique
   studentId Int
-  student   User @relation("StudentBookings", fields: [studentId], references: [id])
+  rating    Int
+  comment   String
 
-  slotId Int
-  slot   TutorSlot @relation(fields: [slotId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  student User    @relation("StudentReviews", fields: [studentId], references: [id])
 
-  notes     String?
-  status    BookingStatus @default(CONFIRMED)
-  createdAt DateTime      @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
-  // Cancellation and refund information
-  cancelledAt      DateTime?
-  priceAtBooking   Decimal   @db.Decimal(10, 2)
-  refundPercentage Int?
-  refundAmount     Decimal?  @db.Decimal(10, 2)
+model BookingAttachment {
+  id           Int      @id @default(autoincrement())
+  bookingId    Int?
+  uploadedById Int
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String   @unique
 
-  @@unique([slotId], where: raw("status = 'CONFIRMED'"))
-  @@index([studentId, status])
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation("UploadedAttachments", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([uploadedById, bookingId])
 }
