@@ -1,17 +1,80 @@
-
 services:
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: tutorhub-db
-    restart: always
+    container_name: tutorhub-lab5-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: tutorhub
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-tutorhub}
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
-      - tutorhub_pgdata:/var/lib/postgresql/data
+      - tutorhub_lab5_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tutorhub}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: tutorhub-lab5-migrate
+    restart: "no"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-tutorhub}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DATABASE_URL: ${DATABASE_URL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin password must be set}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      NODE_ENV: production
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run seed"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: tutorhub-lab5-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-tutorhub}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DATABASE_URL: ${DATABASE_URL:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT secret must be set}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: tutorhub-lab5-client
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
 
 volumes:
-  tutorhub_pgdata:
+  tutorhub_lab5_pgdata:
+    name: tutorhub_lab5_pgdata

@@ -43,10 +43,70 @@ All settings are read from the environment at startup. No secrets or connection 
 
 ## 3. Operational Commands
 
-### Local Development Setup
+### Docker Compose Multi-Container Setup (Episode 3)
+
+The application is orchestrated locally using Docker Compose across 4 coordinated services:
+- **`db`** (`tutorhub-lab5-db`): PostgreSQL 15 database on host port `5434` with healthcheck.
+- **`migrate`** (`tutorhub-lab5-migrate`): One-shot container applying Prisma migrations and initial seed (`admin` account & base subjects).
+- **`server`** (`tutorhub-lab5-server`): Express 5 API running on port `3000`.
+- **`client`** (`tutorhub-lab5-client`): Nginx web server on port `5173` serving the built React 19 SPA and reverse-proxying `/api/` to the backend.
+
 ```bash
-# 1. Start local PostgreSQL database container (port 5433)
-docker compose up -d postgres
+# 1. Prepare environment configuration
+cp .env.example .env
+# Fill in POSTGRES_PASSWORD, JWT_SECRET, and ADMIN_PASSWORD in .env
+
+# 2. Build images and start all containers in background
+docker compose up --build -d
+
+# 3. Check service state
+docker compose ps -a
+# db must be healthy (status: Up (healthy)).
+# server and client must be running (status: Up).
+# migrate must report "Exited (0)".
+
+# 4. If migration or seed fails:
+docker compose logs migrate
+docker compose logs db
+
+# 5. Stop containers (preserves database volume tutorhub_lab5_pgdata)
+docker compose down
+```
+
+> [!CAUTION]
+> Never run `docker compose down -v` during data persistence verification. The `-v` flag deletes named volumes (`tutorhub_lab5_pgdata`), destroying database records and violating Lab 5 Requirement R-04.
+
+### Data Persistence Verification (C-05 / R-04)
+
+```bash
+# 1. Ensure all services are up
+docker compose up -d
+
+# 2. Register a unique student user (must return HTTP 201 Created)
+curl -i -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"persist_student@example.com","password":"Password123!","name":"Persistence Student"}'
+
+# 3. Stop containers safely without deleting the volume
+docker compose down
+
+# 4. Restart containers
+docker compose up -d
+
+# 5. Verify the registered student persists by logging in (returns HTTP 200 OK + JWT)
+curl -i -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"persist_student@example.com","password":"Password123!"}'
+
+# 6. Verify authenticated profile access
+curl -i -X GET http://localhost:3000/api/auth/me \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+### Local Development Setup (Manual / Non-Containerized)
+```bash
+# 1. Start local PostgreSQL database container (port 5434)
+docker compose up -d db
 
 # 2. Setup server environment
 cd server
