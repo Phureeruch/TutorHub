@@ -30,8 +30,9 @@ All settings are read from the environment at startup. No secrets or connection 
 | `JWT_SECRET` | Secret key used for signing & verifying JWT tokens | **Yes** | `server/.env` | Secret Manager (`tutorhub-jwt-secret:latest`) |
 | `ADMIN_PASSWORD` | Initial password for the seeded administrator account | **Yes** | `server/.env` (fallback `password123` in dev) | Secret Manager (`tutorhub-admin-password:latest`) |
 | `DEMO_USER_PASSWORD` | Password for seeded demo accounts (tutors, students) | **Yes** | `server/.env` (fallback `password123` in dev) | Secret Manager (`tutorhub-demo-password:latest`, optional) |
-| `SEED_DEMO_DATA` | Toggle whether non-admin demo records are seeded | No | `server/.env` (default: `true`) | Cloud Run job environment variable (`false` or `true`) |
-| `CORS_ORIGIN` | Allowed cross-origin resource sharing URL | No | `server/.env` (default: `http://localhost:5173`) | Cloud Run container environment variable |
+| `SEED_DEMO_DATA` | Toggle whether demo records are seeded (false = admin & subjects only; true = full demo data) | No | `server/.env` (default: `true`) | Cloud Run job environment variable (`false` or `true`) |
+| `CORS_ORIGIN` | Allowed cross-origin resource sharing URL(s). If unset, allows all origins; if configured, restricts to specified origin(s) (single URL or comma-separated list) | No | `server/.env` (optional; default: allow all) | Cloud Run container environment variable (optional) |
+| `UPLOAD_DIR` | Optional legacy fallback directory for disk-based attachments | No | `server/.env` (default: `uploads`) | Not needed (PostgreSQL BYTEA storage) |
 | `CLIENT_DIST_DIR` | Filesystem path where built client static assets live | No | Local build directory | Docker container image path (`/app/client/dist`) |
 | `VITE_API_TARGET` | Dev proxy target URL for local Vite development server | No | `client/.env` (default: `http://localhost:3000`) | N/A (Production client connects to same origin) |
 | `VITE_USE_MOCK` | Toggle mock browser storage mode for unit tests | No | `client/.env` (default: `false`) | N/A (Always `false` in production build) |

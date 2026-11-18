@@ -18,7 +18,16 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 
 // Middleware
-app.use(cors());
+const corsOriginEnv = process.env.CORS_ORIGIN?.trim();
+const corsOptions = corsOriginEnv
+  ? {
+      origin: corsOriginEnv.includes(',')
+        ? corsOriginEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
+        : corsOriginEnv,
+    }
+  : undefined;
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Health & Readiness Endpoints
@@ -82,7 +91,7 @@ app.use('/api/attachments', attachmentRoutes);
 const clientDistPath = path.resolve(process.env.CLIENT_DIST_DIR || '../client/dist');
 if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
-  app.get('*', (req, res, next) => {
+  app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
       return next();
     }

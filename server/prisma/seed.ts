@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import { prisma } from '../src/lib/prisma.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const seedDemoData = process.env.SEED_DEMO_DATA?.trim().toLowerCase() !== 'false';
 
 // Production passwords must come from environment variables.
 const adminPassword = process.env.ADMIN_PASSWORD || (!isProduction ? 'password123' : '');
@@ -131,12 +132,18 @@ function at(
 async function main() {
   const now = new Date();
   const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
-  const demoPasswordHash = await bcrypt.hash(demoPassword, 12);
+  const demoPasswordHash = seedDemoData
+    ? await bcrypt.hash(demoPassword, 12)
+    : '';
 
-  // 1. Create or update demo accounts.
+  // 1. Create or update accounts (admin only when SEED_DEMO_DATA=false).
+  const accountsToSeed = seedDemoData
+    ? seedAccounts
+    : seedAccounts.filter((account) => account.role === 'ADMIN');
+
   const userIds = new Map<string, number>();
 
-  for (const account of seedAccounts) {
+  for (const account of accountsToSeed) {
     const passwordHash = account.role === 'ADMIN' ? adminPasswordHash : demoPasswordHash;
 
     const user = await prisma.user.upsert({
@@ -172,182 +179,188 @@ async function main() {
     subjectIds.set(subject.name, result.id);
   }
 
-  // 3. Create or update tutor profiles.
-  const profileIds = new Map<string, number>();
+  if (seedDemoData) {
+    // 3. Create or update tutor profiles.
+    const profileIds = new Map<string, number>();
 
-  for (const profile of tutorProfileData) {
-    const userId = userIds.get(profile.email);
+    for (const profile of tutorProfileData) {
+      const userId = userIds.get(profile.email);
 
-    if (userId === undefined) {
-      throw new Error(`Missing tutor account: ${profile.email}`);
+      if (userId === undefined) {
+        throw new Error(`Missing tutor account: ${profile.email}`);
+      }
+
+      const result = await prisma.tutorProfile.upsert({
+        where: { userId },
+        create: {
+          userId,
+          bio: profile.bio,
+        },
+        update: {
+          bio: profile.bio,
+        },
+      });
+
+      profileIds.set(profile.email, result.id);
     }
 
-    const result = await prisma.tutorProfile.upsert({
-      where: { userId },
-      create: {
-        userId,
-        bio: profile.bio,
-      },
-      update: {
-        bio: profile.bio,
-      },
-    });
+    // 4. Create or update tutor subjects.
+    for (const item of tutorSubjectData) {
+      const tutorProfileId = profileIds.get(item.tutorEmail);
+      const subjectId = subjectIds.get(item.subjectName);
 
-    profileIds.set(profile.email, result.id);
-  }
+      if (tutorProfileId === undefined || subjectId === undefined) {
+        throw new Error(`Missing tutor or subject: ${item.subjectName}`);
+      }
 
-  // 4. Create or update tutor subjects.
-  for (const item of tutorSubjectData) {
-    const tutorProfileId = profileIds.get(item.tutorEmail);
-    const subjectId = subjectIds.get(item.subjectName);
-
-    if (tutorProfileId === undefined || subjectId === undefined) {
-      throw new Error(`Missing tutor or subject: ${item.subjectName}`);
-    }
-
-    await prisma.tutorSubject.upsert({
-      where: {
-        tutorProfileId_subjectId: {
+      await prisma.tutorSubject.upsert({
+        where: {
+          tutorProfileId_subjectId: {
+            tutorProfileId,
+            subjectId,
+          },
+        },
+        create: {
           tutorProfileId,
           subjectId,
+          hourlyPrice: item.hourlyPrice,
+          levels: item.levels as (
+            | 'HIGH_SCHOOL'
+            | 'UNDERGRADUATE'
+            | 'GRADUATE'
+          )[],
+          topics: item.topics,
         },
-      },
-      create: {
-        tutorProfileId,
-        subjectId,
-        hourlyPrice: item.hourlyPrice,
-        levels: item.levels as (
-          | 'HIGH_SCHOOL'
-          | 'UNDERGRADUATE'
-          | 'GRADUATE'
-        )[],
-        topics: item.topics,
-      },
-      update: {
-        hourlyPrice: item.hourlyPrice,
-        levels: item.levels as (
-          | 'HIGH_SCHOOL'
-          | 'UNDERGRADUATE'
-          | 'GRADUATE'
-        )[],
-        topics: item.topics,
-      },
-    });
-  }
-
-  // 5. Create demo availabilities.
-  const availabilityData = [
-    { email: 'alice@tutorhub.dev', start: [1, 9, 30], end: [1, 12, 30] },
-    { email: 'alice@tutorhub.dev', start: [2, 13, 0], end: [2, 14, 0] },
-    { email: 'alice@tutorhub.dev', start: [2, 15, 0], end: [2, 17, 0] },
-    { email: 'bob@tutorhub.dev', start: [1, 10, 0], end: [1, 12, 0] },
-    { email: 'bob@tutorhub.dev', start: [2, 13, 30], end: [2, 16, 30] },
-    { email: 'bob@tutorhub.dev', start: [4, 9, 0], end: [4, 10, 0] },
-    { email: 'bob@tutorhub.dev', start: [4, 12, 0], end: [4, 13, 0] },
-  ] as const;
-
-  for (const item of availabilityData) {
-    const tutorId = userIds.get(item.email);
-
-    if (tutorId === undefined) {
-      throw new Error(`Missing tutor: ${item.email}`);
+        update: {
+          hourlyPrice: item.hourlyPrice,
+          levels: item.levels as (
+            | 'HIGH_SCHOOL'
+            | 'UNDERGRADUATE'
+            | 'GRADUATE'
+          )[],
+          topics: item.topics,
+        },
+      });
     }
 
-    const startTime = at(now, ...item.start);
-    const endTime = at(now, ...item.end);
+    // 5. Create demo availabilities.
+    const availabilityData = [
+      { email: 'alice@tutorhub.dev', start: [1, 9, 30], end: [1, 12, 30] },
+      { email: 'alice@tutorhub.dev', start: [2, 13, 0], end: [2, 14, 0] },
+      { email: 'alice@tutorhub.dev', start: [2, 15, 0], end: [2, 17, 0] },
+      { email: 'bob@tutorhub.dev', start: [1, 10, 0], end: [1, 12, 0] },
+      { email: 'bob@tutorhub.dev', start: [2, 13, 30], end: [2, 16, 30] },
+      { email: 'bob@tutorhub.dev', start: [4, 9, 0], end: [4, 10, 0] },
+      { email: 'bob@tutorhub.dev', start: [4, 12, 0], end: [4, 13, 0] },
+    ] as const;
 
-    const existing = await prisma.availability.findFirst({
-      where: {
-        tutorId,
-        startTime,
-        endTime,
-      },
-    });
+    for (const item of availabilityData) {
+      const tutorId = userIds.get(item.email);
 
-    if (!existing) {
-      await prisma.availability.create({
-        data: {
+      if (tutorId === undefined) {
+        throw new Error(`Missing tutor: ${item.email}`);
+      }
+
+      const startTime = at(now, ...item.start);
+      const endTime = at(now, ...item.end);
+
+      const existing = await prisma.availability.findFirst({
+        where: {
           tutorId,
           startTime,
           endTime,
         },
       });
-    }
-  }
 
-  // 6. Create demo bookings.
-  const bookingData = [
-    {
-      studentEmail: 'charlie@tutorhub.dev',
-      tutorEmail: 'alice@tutorhub.dev',
-      subjectName: 'Python Basics',
-      startTime: at(now, 2, 14),
-      endTime: at(now, 2, 15),
-      durationHours: 1,
-      hourlyPriceSnapshot: 400,
-      notes: 'Loops and list comprehensions, please.',
-    },
-    {
-      studentEmail: 'charlie@tutorhub.dev',
-      tutorEmail: 'bob@tutorhub.dev',
-      subjectName: 'Calculus I',
-      startTime: at(now, 4, 10),
-      endTime: at(now, 4, 12),
-      durationHours: 2,
-      hourlyPriceSnapshot: 300,
-      notes: 'Limits and derivatives before the midterm.',
-    },
-  ];
-
-  for (const item of bookingData) {
-    const studentId = userIds.get(item.studentEmail);
-    const tutorId = userIds.get(item.tutorEmail);
-    const subjectId = subjectIds.get(item.subjectName);
-
-    if (
-      studentId === undefined ||
-      tutorId === undefined ||
-      subjectId === undefined
-    ) {
-      throw new Error(`Missing booking relation: ${item.notes}`);
+      if (!existing) {
+        await prisma.availability.create({
+          data: {
+            tutorId,
+            startTime,
+            endTime,
+          },
+        });
+      }
     }
 
-    const existing = await prisma.booking.findFirst({
-      where: {
-        studentId,
-        tutorId,
-        subjectId,
-        notes: item.notes,
+    // 6. Create demo bookings.
+    const bookingData = [
+      {
+        studentEmail: 'charlie@tutorhub.dev',
+        tutorEmail: 'alice@tutorhub.dev',
+        subjectName: 'Python Basics',
+        startTime: at(now, 2, 14),
+        endTime: at(now, 2, 15),
+        durationHours: 1,
+        hourlyPriceSnapshot: 400,
+        notes: 'Loops and list comprehensions, please.',
       },
-    });
+      {
+        studentEmail: 'charlie@tutorhub.dev',
+        tutorEmail: 'bob@tutorhub.dev',
+        subjectName: 'Calculus I',
+        startTime: at(now, 4, 10),
+        endTime: at(now, 4, 12),
+        durationHours: 2,
+        hourlyPriceSnapshot: 300,
+        notes: 'Limits and derivatives before the midterm.',
+      },
+    ];
 
-    if (!existing) {
-      await prisma.booking.create({
-        data: {
+    for (const item of bookingData) {
+      const studentId = userIds.get(item.studentEmail);
+      const tutorId = userIds.get(item.tutorEmail);
+      const subjectId = subjectIds.get(item.subjectName);
+
+      if (
+        studentId === undefined ||
+        tutorId === undefined ||
+        subjectId === undefined
+      ) {
+        throw new Error(`Missing booking relation: ${item.notes}`);
+      }
+
+      const existing = await prisma.booking.findFirst({
+        where: {
           studentId,
           tutorId,
           subjectId,
-          startTime: item.startTime,
-          endTime: item.endTime,
-          durationHours: item.durationHours,
-          hourlyPriceSnapshot: item.hourlyPriceSnapshot,
-          totalPrice:
-            item.hourlyPriceSnapshot * item.durationHours,
           notes: item.notes,
-          status: 'CONFIRMED',
-          paymentStatus: 'SUCCESS',
         },
       });
+
+      if (!existing) {
+        await prisma.booking.create({
+          data: {
+            studentId,
+            tutorId,
+            subjectId,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            durationHours: item.durationHours,
+            hourlyPriceSnapshot: item.hourlyPriceSnapshot,
+            totalPrice:
+              item.hourlyPriceSnapshot * item.durationHours,
+            notes: item.notes,
+            status: 'CONFIRMED',
+            paymentStatus: 'SUCCESS',
+          },
+        });
+      }
     }
   }
 
   console.log('TutorHub seed completed successfully.');
-  console.log(`Accounts: ${seedAccounts.length}`);
+  console.log(`Accounts: ${accountsToSeed.length}${!seedDemoData ? ' (Admin only)' : ''}`);
   console.log(`Subjects: ${subjectData.length}`);
-  console.log(`Tutor profiles: ${tutorProfileData.length}`);
-  console.log(`Tutor subjects: ${tutorSubjectData.length}`);
-  console.log(`Availability windows: ${availabilityData.length}`);
-  console.log(`Demo bookings: ${bookingData.length}`);
+  if (seedDemoData) {
+    console.log(`Tutor profiles: ${tutorProfileData.length}`);
+    console.log(`Tutor subjects: ${tutorSubjectData.length}`);
+    console.log(`Availability windows: ${availabilityData.length}`);
+    console.log(`Demo bookings: ${bookingData.length}`);
+  } else {
+    console.log('Demo data omitted (SEED_DEMO_DATA=false).');
+  }
 }
 
 main()
