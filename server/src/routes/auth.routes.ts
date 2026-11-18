@@ -1,4 +1,3 @@
-
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
@@ -14,19 +13,19 @@ import { authenticate } from '../middleware/auth.js';
 const router = Router();
 
 const registerSchema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(8),
-  name: z.string().trim().min(1),
+  email: z.string(),
+  password: z.string(),
+  name: z.string(),
 });
 
 const loginSchema = z.object({
-  email: z.string().trim().email(),
+  email: z.string().trim().min(1),
   password: z.string().min(1),
 });
 
 const resetPasswordSchema = z.object({
-  email: z.string().trim().email(),
-  newPassword: z.string().min(8),
+  email: z.string(),
+  newPassword: z.string(),
 });
 
 function getUserId(res: Response): number | null {

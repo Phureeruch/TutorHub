@@ -1,23 +1,36 @@
 import { createContext, useContext } from 'react'
+import type { TutorListing } from '../api/mockApi'
 import type {
+  AdminSummary,
   Availability,
   Booking,
   CreateAvailabilityRequest,
   CreateBookingRequest,
   MockDb,
   RegisterRequest,
+  TeachingLevel,
   TutorProfile,
   UpdateTutorProfileRequest,
   User,
 } from '../types/types'
 
+export interface DirectoryFilters {
+  subjectId?: number
+  tutorId?: number
+  date?: string
+  level?: TeachingLevel
+}
+
 /**
  * The surface components use. Every action is async and rejects with ApiError,
- * matching what the fetch-based client will do once the Express API exists.
+ * backed by the Express API in app mode and the pure mock store in Vitest tests.
  */
 export interface MockAppValue {
+  mode: 'api' | 'mock'
+  authReady: boolean
   db: MockDb
   currentUser: User | null
+  adminSummary: AdminSummary
   simulateConflict: boolean
   setSimulateConflict(value: boolean): void
 
@@ -33,6 +46,8 @@ export interface MockAppValue {
   deleteAvailability(availabilityId: number): Promise<void>
 
   createBookingWithMockPayment(req: CreateBookingRequest): Promise<Booking>
+  fetchDirectory(filters: DirectoryFilters): Promise<TutorListing[]>
+  fetchBookingById(bookingId: number): Promise<Booking>
   resetToSeedData(): void
 }
 

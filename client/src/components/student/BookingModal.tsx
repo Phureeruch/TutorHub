@@ -62,6 +62,7 @@ export function BookingModal({ listing, availability, preferredSubjectId, onClos
   const [error, setError] = useState<string | null>(null)
   const errorRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileBlobsRef = useRef<Map<string, File>>(new Map())
 
   // The modal body scrolls; on small screens a payment error lands below the fold.
   useEffect(() => {
@@ -89,16 +90,26 @@ export function BookingModal({ listing, availability, preferredSubjectId, onClos
   }
 
   const handleFiles = (e: ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []).map((f) => ({ name: f.name, size: f.size, type: f.type }))
+    const rawFiles = Array.from(e.target.files ?? [])
+    const picked = rawFiles.map((f) => ({ name: f.name, size: f.size, type: f.type }))
     // Reset so picking the same file again still fires a change event.
     e.target.value = ''
     const next = mergeAttachments(files, picked)
     const problem = attachmentError(next)
     setFileError(problem)
-    if (!problem) setFiles(next)
+    if (!problem) {
+      for (const raw of rawFiles) {
+        const key = attachmentKey({ name: raw.name, size: raw.size, type: raw.type })
+        if (!fileBlobsRef.current.has(key)) {
+          fileBlobsRef.current.set(key, raw)
+        }
+      }
+      setFiles(next)
+    }
   }
 
   const removeFile = (key: string) => {
+    fileBlobsRef.current.delete(key)
     setFiles((current) => current.filter((f) => attachmentKey(f) !== key))
     setFileError(null)
     fileInputRef.current?.focus()
@@ -110,6 +121,9 @@ export function BookingModal({ listing, availability, preferredSubjectId, onClos
     setError(null)
     setSubmitting(true)
     try {
+      const attachmentFiles = files
+        .map((f) => fileBlobsRef.current.get(attachmentKey(f)))
+        .filter((f): f is File => f !== undefined)
       const booking = await createBookingWithMockPayment({
         tutorId: tutor.id,
         subjectId,
@@ -117,6 +131,7 @@ export function BookingModal({ listing, availability, preferredSubjectId, onClos
         durationHours: hours,
         notes,
         attachments: files,
+        attachmentFiles,
       })
       onBooked(booking)
     } catch (err) {

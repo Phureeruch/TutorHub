@@ -56,28 +56,17 @@ describe('calculateBookingPrice', () => {
     );
   });
 
-  it('should allow a zero hourly price', () => {
-    assert.deepEqual(
-      calculateBookingPrice({
-        hourlyPrice: 0,
-        durationHours: 2,
-      }),
-      {
-        hourlyPriceSnapshot: 0,
-        totalPrice: 0,
-      },
-    );
-  });
-
-  it('should reject a negative hourly price', () => {
-    assert.throws(
-      () =>
-        calculateBookingPrice({
-          hourlyPrice: -100,
-          durationHours: 1,
-        }),
-      /Hourly price must be a valid non-negative number/,
-    );
+  it('should reject a zero or negative hourly price', () => {
+    for (const hourlyPrice of [0, -100]) {
+      assert.throws(
+        () =>
+          calculateBookingPrice({
+            hourlyPrice,
+            durationHours: 1,
+          }),
+        /Hourly price must be a valid positive number/,
+      );
+    }
   });
 
   it('should reject an invalid hourly price', () => {

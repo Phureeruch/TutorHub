@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { useMockApp } from '../../context/appContext'
-import { SEED_ACCOUNTS } from '../../data/seedData'
+import { SEED_ACCOUNTS, SEED_PASSWORD } from '../../data/seedData'
 
-/** Sprint 1 demo aid: jump between seed users, force a 409, or reset data (F-08). */
+/** Dev/demo aid: jump between seed users, force a 409, or reset/refresh data (F-08). */
 export function DemoToolbar() {
-  const { db, currentUser, switchDemoUser, simulateConflict, setSimulateConflict, resetToSeedData } = useMockApp()
+  const { mode, db, currentUser, login, switchDemoUser, simulateConflict, setSimulateConflict, resetToSeedData } =
+    useMockApp()
   const [expanded, setExpanded] = useState(false)
 
-  const seedUsers = SEED_ACCOUNTS.map((a) => db.users.find((u) => u.email === a.email)).filter((u) => u !== undefined)
-
   const handleReset = () => {
+    if (mode === 'api') {
+      resetToSeedData()
+      return
+    }
     if (window.confirm('Reset all demo data to the seed state? Bookings and changes made in this browser will be lost.')) {
       resetToSeedData()
     }
@@ -33,17 +36,28 @@ export function DemoToolbar() {
         <div id="th-demo-panel" className="th-demo-inner th-demo-panel">
           <div className="th-demo-group" role="group" aria-label="Sign in as">
             <span className="th-demo-label">Sign in as</span>
-            {seedUsers.map((u) => (
-              <button
-                key={u.id}
-                type="button"
-                className="th-demo-chip"
-                aria-pressed={currentUser?.id === u.id}
-                onClick={() => switchDemoUser(u.id)}
-              >
-                {u.name}
-              </button>
-            ))}
+            {SEED_ACCOUNTS.map((account) => {
+              const matched = db.users.find((u) => u.email === account.email)
+              if (mode === 'mock' && !matched) return null
+              const isActive = currentUser?.email === account.email
+              return (
+                <button
+                  key={account.email}
+                  type="button"
+                  className="th-demo-chip"
+                  aria-pressed={isActive}
+                  onClick={() => {
+                    if (mode === 'api') {
+                      void login(account.email, SEED_PASSWORD)
+                    } else if (matched) {
+                      switchDemoUser(matched.id)
+                    }
+                  }}
+                >
+                  {account.name}
+                </button>
+              )
+            })}
           </div>
           <label className="th-demo-check">
             <input
@@ -54,7 +68,7 @@ export function DemoToolbar() {
             Simulate a concurrent booking conflict (409)
           </label>
           <button type="button" className="th-demo-chip" onClick={handleReset}>
-            Reset demo data
+            {mode === 'api' ? 'Refresh data' : 'Reset demo data'}
           </button>
         </div>
       )}

@@ -63,7 +63,7 @@ function hasFutureBookableSlot(
 
 export async function getSubjects() {
   return prisma.subject.findMany({
-    orderBy: { name: 'asc' },
+    orderBy: { id: 'asc' },
   });
 }
 
@@ -199,6 +199,8 @@ export async function listTutorDirectory(
           id: profile.id,
           userId: profile.userId,
           bio: profile.bio,
+          createdAt: profile.createdAt,
+          updatedAt: profile.updatedAt,
         },
 
         subjects: profile.subjects.map((link) => ({

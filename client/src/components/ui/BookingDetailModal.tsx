@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { httpClient } from '../../api/httpClient'
 import { ApiError, getBookingById } from '../../api/mockApi'
 import { useCurrentUser, useMockApp } from '../../context/appContext'
 import type { Booking } from '../../types/types'
@@ -22,19 +24,65 @@ interface BookingDetailModalProps {
 /** FR-11: one booking in full, fetched through the same ownership check as GET /api/bookings/:id. */
 export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalProps) {
   const user = useCurrentUser()
-  const { db } = useMockApp()
+  const { mode, db, fetchBookingById } = useMockApp()
+  const [apiBooking, setApiBooking] = useState<Booking | null>(() =>
+    mode === 'api' ? (db.bookings.find((b) => b.id === bookingId) ?? null) : null,
+  )
+  const [apiError, setApiError] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
-  let booking: Booking
-  try {
-    booking = getBookingById(db, user, bookingId)
-  } catch (err) {
+  useEffect(() => {
+    if (mode !== 'api') return
+    let active = true
+    void fetchBookingById(bookingId)
+      .then((loaded) => {
+        if (!active) return
+        setApiBooking(loaded)
+        setApiError(null)
+      })
+      .catch((err) => {
+        if (!active) return
+        setApiError(err instanceof ApiError ? err.message : 'This booking could not be loaded.')
+      })
+    return () => {
+      active = false
+    }
+  }, [mode, bookingId, fetchBookingById])
+
+  let booking: Booking | null = null
+  let loadError: string | null = apiError
+
+  if (mode === 'mock') {
+    try {
+      booking = getBookingById(db, user, bookingId)
+    } catch (err) {
+      loadError = err instanceof ApiError ? err.message : 'This booking could not be loaded.'
+    }
+  } else {
+    booking = apiBooking
+  }
+
+  if (loadError || !booking) {
     return (
       <Modal title="Booking details" onClose={onClose}>
-        <div className="th-notice th-notice-error" role="alert">
-          {err instanceof ApiError ? err.message : 'This booking could not be loaded.'}
-        </div>
+        {loadError ? (
+          <div className="th-notice th-notice-error" role="alert">
+            {loadError}
+          </div>
+        ) : (
+          <p className="text-muted-ink mb-0">Loading booking details…</p>
+        )}
       </Modal>
     )
+  }
+
+  const handleDownload = async (attachmentId: number, fileName: string) => {
+    setDownloadError(null)
+    try {
+      await httpClient.downloadAttachment(attachmentId, fileName)
+    } catch (err) {
+      setDownloadError(err instanceof ApiError ? err.message : 'Could not download this file.')
+    }
   }
 
   return (
@@ -49,11 +97,11 @@ export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalPro
     >
       <dl className="th-detail">
         <dt>Subject</dt>
-        <dd>{subjectNameOf(db, booking.subjectId)}</dd>
+        <dd>{subjectNameOf(db, booking.subjectId, booking.subject)}</dd>
         <dt>Student</dt>
-        <dd>{userNameOf(db, booking.studentId)}</dd>
+        <dd>{userNameOf(db, booking.studentId, booking.student)}</dd>
         <dt>Tutor</dt>
-        <dd>{userNameOf(db, booking.tutorId)}</dd>
+        <dd>{userNameOf(db, booking.tutorId, booking.tutor)}</dd>
         <dt>When</dt>
         <dd>
           {formatDay(booking.startTime)}, {formatTimeRange(booking.startTime, booking.endTime)}
@@ -65,7 +113,12 @@ export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalPro
         <dt>Total paid</dt>
         <dd>{formatMoney(booking.totalPrice)}</dd>
         <dt>Tutor&rsquo;s rate now</dt>
-        <dd>{rateNow(currentRateOf(db, booking.tutorId, booking.subjectId), booking.hourlyPriceSnapshot)}</dd>
+        <dd>
+          {rateNow(
+            currentRateOf(db, booking.tutorId, booking.subjectId, booking.currentHourlyPrice),
+            booking.hourlyPriceSnapshot,
+          )}
+        </dd>
         <dt>Status</dt>
         <dd>
           <BookingStatusTags booking={booking} />
@@ -79,11 +132,25 @@ export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalPro
           ) : (
             <ul className="th-detail-files">
               {booking.attachments.map((f) => (
-                <li key={attachmentKey(f)}>
+                <li key={f.id ?? attachmentKey(f)}>
                   {f.name} <span className="text-muted-ink small">{formatBytes(f.size)}</span>
+                  {mode === 'api' && f.id !== undefined && (
+                    <button
+                      type="button"
+                      className="btn-link-ink small ms-2"
+                      onClick={() => void handleDownload(f.id!, f.name)}
+                    >
+                      Download
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
+          )}
+          {downloadError && (
+            <div className="th-notice th-notice-error mt-2" role="alert">
+              {downloadError}
+            </div>
           )}
         </dd>
         <dt>Confirmed</dt>

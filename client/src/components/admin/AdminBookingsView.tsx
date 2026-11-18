@@ -5,14 +5,12 @@ import { formatDay, formatHours, formatMoney, formatRate, formatTimeRange } from
 import { subjectNameOf, userNameOf } from '../../utils/lookups'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
 import { BookingStatusTags } from '../ui/PriceSnapshot'
-import { computeAdminSummary } from './adminSummary'
 
 /** F-07 / FR-11 / BR-03: every booking in the school, admin only (route-guarded). */
 export function AdminBookingsView() {
   const admin = useCurrentUser()
-  const { db } = useMockApp()
+  const { db, adminSummary: summary } = useMockApp()
   const bookings = listBookings(db, admin)
-  const summary = computeAdminSummary(db)
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null)
 
   return (
@@ -80,9 +78,9 @@ export function AdminBookingsView() {
                     <br />
                     <span className="text-muted-ink">{formatTimeRange(b.startTime, b.endTime)}</span>
                   </td>
-                  <td>{userNameOf(db, b.studentId)}</td>
-                  <td>{userNameOf(db, b.tutorId)}</td>
-                  <td>{subjectNameOf(db, b.subjectId)}</td>
+                  <td>{userNameOf(db, b.studentId, b.student)}</td>
+                  <td>{userNameOf(db, b.tutorId, b.tutor)}</td>
+                  <td>{subjectNameOf(db, b.subjectId, b.subject)}</td>
                   <td className="th-num">{formatHours(b.durationHours)}</td>
                   <td className="th-num">{formatRate(b.hourlyPriceSnapshot)}</td>
                   <td className="th-num fw-semibold">{formatMoney(b.totalPrice)}</td>

@@ -1,16 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { authenticate, type AuthenticatedUser } from '../middleware/auth.js';
 import { BookingError, createBooking } from '../services/booking.service.js';
 
 const router = Router();
 
-interface AuthenticatedUser {
-  id: number;
-  role: 'STUDENT' | 'TUTOR' | 'ADMIN';
-}
-
-const bookingInclude = {
+export const bookingInclude = {
   student: { select: { id: true, name: true } },
   tutor: {
     select: {
@@ -28,15 +24,17 @@ const bookingInclude = {
   subject: { select: { id: true, name: true } },
   attachments: {
     select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
+    orderBy: { id: 'asc' as const },
   },
 } satisfies Prisma.BookingInclude;
 
-type BookingWithRelations = Prisma.BookingGetPayload<{
+export type BookingWithRelations = Prisma.BookingGetPayload<{
   include: typeof bookingInclude;
 }>;
 
-// Auth middleware must populate res.locals.user before these handlers run.
-// Never accept studentId or tutorId from the request body.
+// Populate res.locals.user before every booking handler runs.
+router.use(authenticate);
+
 function getAuthenticatedUser(res: Response): AuthenticatedUser | null {
   const user = res.locals.user as Partial<AuthenticatedUser> | undefined;
   if (
@@ -49,7 +47,7 @@ function getAuthenticatedUser(res: Response): AuthenticatedUser | null {
   return user as AuthenticatedUser;
 }
 
-function toBookingDto(booking: BookingWithRelations) {
+export function toBookingDto(booking: BookingWithRelations) {
   const currentRate = booking.tutor.tutorProfile?.subjects.find(
     (item) => item.subjectId === booking.subjectId,
   );
@@ -86,6 +84,20 @@ function toBookingDto(booking: BookingWithRelations) {
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
   };
+}
+
+function isValidInlineAttachmentArray(
+  value: unknown,
+): value is { name: string; size: number; type: string }[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as { name?: unknown }).name === 'string' &&
+      typeof (item as { size?: unknown }).size === 'number' &&
+      typeof (item as { type?: unknown }).type === 'string',
+  );
 }
 
 // GET /api/bookings
@@ -160,7 +172,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/bookings
-// Requires authenticated STUDENT role.
+// Requires authenticated STUDENT role. Never accept studentId from the request body.
 router.post('/', async (req: Request, res: Response) => {
   const user = getAuthenticatedUser(res);
   if (!user) {
@@ -172,8 +184,15 @@ router.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  const { tutorId, subjectId, startTime, durationHours, notes, attachmentIds } =
-    req.body ?? {};
+  const {
+    tutorId,
+    subjectId,
+    startTime,
+    durationHours,
+    notes,
+    attachmentIds,
+    attachments,
+  } = req.body ?? {};
 
   if (
     !Number.isInteger(tutorId) ||
@@ -181,9 +200,10 @@ router.post('/', async (req: Request, res: Response) => {
     !Number.isInteger(subjectId) ||
     subjectId <= 0 ||
     typeof startTime !== 'string' ||
-    !Number.isInteger(durationHours) ||
+    typeof durationHours !== 'number' ||
     (notes !== undefined && notes !== null && typeof notes !== 'string') ||
-    (attachmentIds !== undefined && !Array.isArray(attachmentIds))
+    (attachmentIds !== undefined && !Array.isArray(attachmentIds)) ||
+    (attachments !== undefined && !isValidInlineAttachmentArray(attachments))
   ) {
     res.status(400).json({ message: 'Invalid booking request.' });
     return;
@@ -198,6 +218,7 @@ router.post('/', async (req: Request, res: Response) => {
       durationHours,
       notes: notes ?? null,
       attachmentIds,
+      attachments,
     });
 
     // Reload with the same DTO relations used by GET endpoints, including current subject rate.

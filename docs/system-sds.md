@@ -49,13 +49,12 @@ flowchart LR
 The schema enforces core **Draft 2 business rules** directly at the data layer, including continuous availability intervals, duration-based bookings with price snapshots, mock payment tracking, tiered refunds, and review editing.
 
 ```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
 }
 
 // ---------------------------------------------------------------------------
@@ -80,26 +79,33 @@ enum PaymentStatus {
   REFUNDED_FULL
 }
 
+enum TeachingLevel {
+  HIGH_SCHOOL
+  UNDERGRADUATE
+  GRADUATE
+}
+
 // ---------------------------------------------------------------------------
 // User & Profile Models
 // ---------------------------------------------------------------------------
 
 model User {
-  id              Int            @id @default(autoincrement())
-  email           String         @unique
-  password        String         // NFR-01, NFR-03: Salted hash (bcrypt)
+  id              Int                 @id @default(autoincrement())
+  email           String              @unique
+  password        String              // NFR-01, NFR-03: Salted hash (bcrypt)
   name            String
-  role            Role           // BR-01: Exactly one role per account
-  isEmailVerified Boolean        @default(false) // BR-02: Required before booking
-  isApproved      Boolean        @default(false) // BR-02: Tutor accounts require Admin approval
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  role            Role                // BR-01: Exactly one role per account
+  isEmailVerified Boolean             @default(false) // BR-02: Required before booking
+  isApproved      Boolean             @default(false) // BR-02: Tutor accounts require Admin approval
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   tutorProfile    TutorProfile?
-  availabilities  Availability[] @relation("TutorAvailabilities")
-  studentBookings Booking[]      @relation("StudentBookings")
-  tutorBookings   Booking[]      @relation("TutorBookings")
-  reviews         Review[]       @relation("StudentReviews")
+  availabilities  Availability[]      @relation("TutorAvailabilities")
+  studentBookings Booking[]           @relation("StudentBookings")
+  tutorBookings   Booking[]           @relation("TutorBookings")
+  reviews         Review[]            @relation("StudentReviews")
+  uploads         BookingAttachment[] @relation("UploadedAttachments")
 }
 
 model Subject {
@@ -112,28 +118,30 @@ model Subject {
 }
 
 model TutorProfile {
-  id          Int            @id @default(autoincrement())
-  userId      Int            @unique
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bio         String?
-  hourlyPrice Float          // FR-05, BR-09: Hourly rate for booking calculation
-  subjects    TutorSubject[]
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id        Int            @id @default(autoincrement())
+  userId    Int            @unique
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio       String?
+  subjects  TutorSubject[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 }
 
 model TutorSubject {
-  id             Int          @id @default(autoincrement())
+  id             Int             @id @default(autoincrement())
   tutorProfileId Int
-  tutorProfile   TutorProfile @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
+  tutorProfile   TutorProfile    @relation(fields: [tutorProfileId], references: [id], onDelete: Cascade)
   subjectId      Int
-  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject        Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  hourlyPrice    Decimal         @db.Decimal(10, 2) // FR-05, BR-09 source (THB, > 0)
+  levels         TeachingLevel[] @default([])
+  topics         String?         @db.VarChar(200)
 
   @@unique([tutorProfileId, subjectId])
 }
 
 // ---------------------------------------------------------------------------
-// Availability & Booking Models
+// Availability, Booking & Attachment Models
 // ---------------------------------------------------------------------------
 
 model Availability {
@@ -149,33 +157,50 @@ model Availability {
 }
 
 model Booking {
-  id                  Int           @id @default(autoincrement())
+  id                  Int                 @id @default(autoincrement())
   studentId           Int
-  student             User          @relation("StudentBookings", fields: [studentId], references: [id])
+  student             User                @relation("StudentBookings", fields: [studentId], references: [id])
   tutorId             Int
-  tutor               User          @relation("TutorBookings", fields: [tutorId], references: [id])
+  tutor               User                @relation("TutorBookings", fields: [tutorId], references: [id])
   subjectId           Int
-  subject             Subject       @relation(fields: [subjectId], references: [id])
-  startTime           DateTime      // BR-05: 1-hour interval from availability start
-  endTime             DateTime      // BR-05: Whole hour duration
-  durationHours       Int           // BR-05: Whole number of hours (1h, 2h, etc.)
-  hourlyPriceSnapshot Float         // BR-09: Frozen hourly price at confirmation
-  totalPrice          Float         // BR-09: durationHours * hourlyPriceSnapshot
-  notes               String?       // Optional session notes from student
-  lessonSummary       String?       // FR-13: Tutor lesson summary or homework
-  status              BookingStatus @default(CONFIRMED)
-  paymentStatus       PaymentStatus @default(SUCCESS) // FR-10: Mock payment status
-  cancelledBy         Role?         // BR-11, BR-12: STUDENT or TUTOR
+  subject             Subject             @relation(fields: [subjectId], references: [id])
+  startTime           DateTime            // BR-05: 1-hour interval from availability start
+  endTime             DateTime            // BR-05: Whole hour duration
+  durationHours       Int                 // BR-05: Whole number of hours (1h, 2h, etc.)
+  hourlyPriceSnapshot Decimal             @db.Decimal(10, 2) // BR-09: Frozen hourly price at confirmation
+  totalPrice          Decimal             @db.Decimal(10, 2) // BR-09: durationHours * hourlyPriceSnapshot
+  notes               String?             // Optional session notes from student
+  lessonSummary       String?             // FR-13: Tutor lesson summary or homework
+  status              BookingStatus       @default(CONFIRMED)
+  paymentStatus       PaymentStatus       @default(SUCCESS) // FR-10: Mock payment status
+  cancelledBy         Role?               // BR-11, BR-12: STUDENT or TUTOR
   cancelledAt         DateTime?
-  refundPercentage    Int?          // BR-11: 100, 50, 0
-  refundAmount        Float?        // BR-11: Calculated refund amount
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  refundPercentage    Int?                // BR-11: 100, 50, 0
+  refundAmount        Decimal?            @db.Decimal(10, 2) // BR-11: Calculated refund amount
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   review              Review?
+  attachments         BookingAttachment[]
 
   @@index([studentId, startTime, endTime])
   @@index([tutorId, startTime, endTime])
+}
+
+model BookingAttachment {
+  id           Int      @id @default(autoincrement())
+  bookingId    Int?     // Null until linked inside the booking confirmation transaction
+  booking      Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  uploadedById Int
+  uploadedBy   User     @relation("UploadedAttachments", fields: [uploadedById], references: [id])
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String   @unique
+  createdAt    DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([uploadedById, bookingId])
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +219,8 @@ model Review {
   updatedAt DateTime @updatedAt // FR-14, BR-14: Review editing support
 }
 ```
+
+> **Note:** Monetary columns (`hourlyPrice`, `hourlyPriceSnapshot`, `totalPrice`, `refundAmount`) use `Decimal(10, 2)` in PostgreSQL (Thai baht) and are serialized as JSON `number` values in API responses. Non-overlapping tutor/student booking guarantees are enforced at the database level via GiST exclusion constraints (`booking_tutor_no_overlap`, `booking_student_no_overlap`).
 
 ---
 
@@ -252,8 +279,8 @@ sequenceDiagram
 #### `POST /api/auth/register`
 * **Access:** Public
 * **Request:** `{ email: string, password: string, name: string }`
-* **Response (201):** `{ message: "Student registered successfully. Please verify your email.", userId: number }`
-* **Errors:** `400 Bad Request` (Invalid email/password format), `409 Conflict` (Email already registered).
+* **Response (201):** `{ message: "Registration successful. Please verify your email.", userId: number, token: string, user: UserPublic }`
+* **Errors:** `400 Bad Request` (Invalid email/password/name), `409 Conflict` (Email already registered).
 
 #### `POST /api/auth/login`
 * **Access:** Public
@@ -261,19 +288,44 @@ sequenceDiagram
 * **Response (200):** `{ token: string, user: { id: number, email: string, name: string, role: Role, isEmailVerified: boolean, isApproved: boolean } }`
 * **Errors:** `401 Unauthorized` (Invalid credentials).
 
+#### `GET /api/auth/me`
+* **Access:** Requires Auth
+* **Response (200):** `{ user: UserPublic }`
+
 #### `POST /api/auth/verify-email`
-* **Access:** Requires Auth (Student)
+* **Access:** Requires Auth
 * **Request:** `{}`
-* **Response (200):** `{ message: "Email verified successfully.", isEmailVerified: true }`
+* **Response (200):** `{ message: "Email verified successfully.", isEmailVerified: true, user: UserPublic }`
 
 #### `POST /api/auth/reset-password`
 * **Access:** Public
 * **Request:** `{ email: string, newPassword: string }`
-* **Response (200):** `{ message: "Password reset successful." }`
+* **Response (200):** `{ message: "If the account exists, the password has been reset." }`
 
 ---
 
-### 4.2 Tutor Profile & Availability Management (Korapin)
+### 4.2 Tutor Profile, Discovery & Availability Management (Korapin)
+
+#### `GET /api/subjects`
+* **Access:** Public / Authenticated
+* **Response (200):** Array of `Subject` objects ordered by `id`.
+
+#### `GET /api/tutors`
+* **Access:** Public / Authenticated
+* **Response (200):** Array of `{ id: number, name: string }` for approved tutors.
+
+#### `GET /api/tutor/profile`
+* **Access:** Requires `TUTOR` role
+* **Response (200):** `{ user, profile, subjects }` where `subjects` includes `{ id, name, description, createdAt, hourlyPrice, levels, topics }`.
+
+#### `PUT /api/tutor/profile`
+* **Access:** Requires `TUTOR` role
+* **Request:** `{ bio?: string, subjects: [{ subjectId: number, hourlyPrice: number, levels?: TeachingLevel[], topics?: string | null }] }`
+* **Response (200):** Updated `{ user, profile, subjects }` (without affecting existing bookings' frozen prices).
+
+#### `GET /api/tutor/availability`
+* **Access:** Requires `TUTOR` role
+* **Response (200):** `{ availabilities: Availability[], bookings: BookingDTO[] }` for open and booked windows ending in the future.
 
 #### `POST /api/tutor/availability`
 * **Access:** Requires `TUTOR` role
@@ -283,26 +335,32 @@ sequenceDiagram
   - Duration must be $\ge 1\text{ hour}$ and a whole number of hours.
   - `startTime` must begin on `:00` or `:30`.
   - `startTime` must be in the future.
-* **Errors:** `400 Bad Request` (Invalid interval/past timestamp), `403 Forbidden` (Non-tutor).
+  - Must not overlap existing availability or non-cancelled bookings.
+* **Errors:** `400 Bad Request` (Invalid interval/past timestamp/overlap), `403 Forbidden` (Non-tutor).
 
 #### `GET /api/availability`
 * **Access:** Public / Authenticated
-* **Query Params:** `?subjectId=number&tutorId=number&date=YYYY-MM-DD`
-* **Response (200):** Array of available continuous time intervals per tutor with hourly pricing.
+* **Query Params:** `?subjectId=number&tutorId=number&date=YYYY-MM-DD&level=HIGH_SCHOOL|UNDERGRADUATE|GRADUATE`
+* **Response (200):** Array of approved tutor listings `{ user, profile, subjects, availabilities }` with future bookable slots.
 
 #### `DELETE /api/tutor/availability/:id`
 * **Access:** Requires `TUTOR` role (ownership verified)
-* **Response (200):** `{ message: "Availability period removed." }`
-* **Errors:** `400 Bad Request` (Cannot delete interval with existing confirmed bookings).
-
-#### `PUT /api/tutor/profile`
-* **Access:** Requires `TUTOR` role
-* **Request:** `{ bio?: string, hourlyPrice: number, subjectIds: number[] }`
-* **Response (200):** Updated `TutorProfile`.
+* **Response (200):** `{ message: "Availability removed successfully." }`
+* **Errors:** `400 Bad Request` (Cannot delete interval with existing confirmed bookings), `403 Forbidden` (Not owner), `404 Not Found`.
 
 ---
 
-### 4.3 Booking & Mock Payment (Phureeruch)
+### 4.3 Bookings, Lecture Attachments & Mock Payment (Phureeruch)
+
+#### `POST /api/attachments`
+* **Access:** Requires `STUDENT` role
+* **Request:** `multipart/form-data` (field `file`) or JSON metadata `{ name: string, size: number, type: string }`
+* **Validation:** File size `<= 20 MB`; allowed MIME types (PDF, PPT/PPTX, DOC/DOCX, TXT, PNG/JPG/GIF/WEBP).
+* **Response (201):** `{ id: number, name: string, size: number, type: string }`
+
+#### `GET /api/attachments/:id`
+* **Access:** Requires Auth (Uploader, booking Student/Tutor, or Admin)
+* **Response (200):** Streams file with `Content-Disposition: attachment` (or returns metadata JSON if uploaded as metadata-only).
 
 #### `POST /api/bookings`
 * **Access:** Requires `STUDENT` role
@@ -314,19 +372,20 @@ sequenceDiagram
     "subjectId": 2,
     "startTime": "2026-11-10T10:00:00.000Z",
     "durationHours": 2,
-    "notes": "Need help preparing for midterm exam."
+    "notes": "Need help preparing for midterm exam.",
+    "attachmentIds": [12]
   }
   ```
 * **Processing:**
-  1. Validate start time alignment (1-hour step from availability block start, `:00` or `:30`).
+  1. Validate start time alignment (1-hour step from availability block start, `:00` or `:30`) and optional lecture attachments (<= 5 files).
   2. Verify target interval fits entirely within an active `Availability` record.
   3. Verify no overlapping confirmed bookings exist for the Tutor or the Student (BR-07).
   4. Execute mock payment simulation.
-  5. Snapshot `hourlyPrice` and calculate `totalPrice = hourlyPrice * durationHours`.
-  6. Insert `Booking` record with `CONFIRMED` status.
-* **Response (201):** Confirmed `Booking` object including frozen price snapshot.
+  5. Snapshot chosen `TutorSubject.hourlyPrice` and calculate `totalPrice = hourlyPrice * durationHours`.
+  6. Insert `Booking` record with `CONFIRMED` status, link/create attachments, and slice remaining availability (BR-06) inside a `Serializable` transaction.
+* **Response (201):** Confirmed `Booking` DTO including embedded `student`, `tutor`, `subject`, `attachments`, `currentHourlyPrice`, and frozen price snapshot.
 * **Errors:**
-  - `400 Bad Request` (Unverified email, past date, non-whole hour duration).
+  - `400 Bad Request` (Unverified email, past date, non-whole hour duration, invalid attachments).
   - `409 Conflict` (Concurrent booking overlap or slot unavailable).
 
 #### `GET /api/bookings`
@@ -335,11 +394,11 @@ sequenceDiagram
   - `STUDENT`: Returns bookings where `studentId === currentUserId`.
   - `TUTOR`: Returns bookings where `tutorId === currentUserId`.
   - `ADMIN`: Returns all bookings school-wide.
-* **Response (200):** Array of bookings with tutor, student, subject, and status details.
+* **Response (200):** Array of booking DTOs with embedded student, tutor, subject, attachments, and status details.
 
 #### `GET /api/bookings/:id`
 * **Access:** Requires Auth (Ownership check: Student, Tutor, or Admin).
-* **Response (200):** Booking detail.
+* **Response (200):** Booking DTO detail.
 
 ---
 
@@ -390,9 +449,13 @@ sequenceDiagram
 
 ---
 
-### 4.6 Admin Oversight API (Korapin — Sprint 2)
+### 4.6 Admin Oversight API (Korapin — Sprint 1 & Sprint 2)
 
-#### `GET /api/admin/tutors/pending`
+#### `GET /api/admin/summary` (Sprint 1)
+* **Access:** Requires `ADMIN` role
+* **Response (200):** `{ totalBookings: number, mockRevenue: number, activeTutors: number, verifiedStudents: number, totalStudents: number }`
+
+#### `GET /api/admin/tutors/pending` (Sprint 2)
 * **Access:** Requires `ADMIN` role
 * **Response (200):** Array of unapproved Tutor accounts (`isApproved: false`).
 

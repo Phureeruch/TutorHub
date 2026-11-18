@@ -36,14 +36,24 @@ function renderView(path: AppPath) {
 }
 
 function Shell() {
-  const { currentUser } = useMockApp()
+  const { authReady, currentUser } = useMockApp()
   const { pathname, navigate } = useAppRoute()
   const resolved = resolveRoute(pathname, currentUser)
 
-  // Keep the address bar honest after a guard redirect (sign-in, sign-out, wrong role).
+  // Keep the address bar honest after a guard redirect (sign-in, sign-out, wrong role),
+  // waiting for initial token restoration in API mode so refreshes stay on their route.
   useEffect(() => {
+    if (!authReady) return
     if (resolved !== pathname) navigate(resolved, { replace: true })
-  }, [resolved, pathname, navigate])
+  }, [authReady, resolved, pathname, navigate])
+
+  if (!authReady) {
+    return (
+      <main id="main" className="th-page">
+        <p className="text-muted-ink">Loading session…</p>
+      </main>
+    )
+  }
 
   return (
     <>

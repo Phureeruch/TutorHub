@@ -1,8 +1,7 @@
-
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-
-const HOUR_MS = 60 * 60 * 1000;
+import { bookingInclude, toBookingDto } from '../routes/booking.routes.js';
+import { validateAvailabilityWindow } from '../utils/time.validation.js';
 
 export class AvailabilityError extends Error {
   constructor(
@@ -11,54 +10,6 @@ export class AvailabilityError extends Error {
   ) {
     super(message);
     this.name = 'AvailabilityError';
-  }
-}
-
-function validateAvailabilityInput(
-  startTime: Date,
-  endTime: Date,
-): void {
-  if (
-    Number.isNaN(startTime.getTime()) ||
-    Number.isNaN(endTime.getTime())
-  ) {
-    throw new AvailabilityError('Invalid availability time.', 400);
-  }
-
-  const minutes = startTime.getMinutes();
-
-  if (
-    (minutes !== 0 && minutes !== 30) ||
-    startTime.getSeconds() !== 0 ||
-    startTime.getMilliseconds() !== 0
-  ) {
-    throw new AvailabilityError(
-      'Availability must start on :00 or :30.',
-      400,
-    );
-  }
-
-  const duration = endTime.getTime() - startTime.getTime();
-
-  if (duration < HOUR_MS) {
-    throw new AvailabilityError(
-      'Availability must be at least 1 hour long.',
-      400,
-    );
-  }
-
-  if (duration % HOUR_MS !== 0) {
-    throw new AvailabilityError(
-      'Availability must last a whole number of hours.',
-      400,
-    );
-  }
-
-  if (startTime.getTime() <= Date.now()) {
-    throw new AvailabilityError(
-      'Availability must start in the future.',
-      400,
-    );
   }
 }
 
@@ -84,8 +35,10 @@ export async function createAvailability(
   },
 ) {
   const { startTime, endTime } = input;
-
-  validateAvailabilityInput(startTime, endTime);
+  const check = validateAvailabilityWindow(startTime, endTime, new Date());
+  if (!check.valid) {
+    throw new AvailabilityError(check.reason, 400);
+  }
 
   try {
     return await prisma.$transaction(
@@ -200,7 +153,6 @@ export async function deleteAvailability(
   }
 }
 
-
 export async function getTutorAvailability(tutorId: number) {
   const now = new Date();
 
@@ -208,7 +160,7 @@ export async function getTutorAvailability(tutorId: number) {
     prisma.availability.findMany({
       where: {
         tutorId,
-        startTime: { gte: now },
+        endTime: { gt: now },
       },
       orderBy: { startTime: 'asc' },
     }),
@@ -216,23 +168,16 @@ export async function getTutorAvailability(tutorId: number) {
     prisma.booking.findMany({
       where: {
         tutorId,
-        startTime: { gte: now },
+        endTime: { gt: now },
         status: { not: 'CANCELLED' },
       },
       orderBy: { startTime: 'asc' },
+      include: bookingInclude,
     }),
   ]);
 
   return {
     availabilities,
-    bookings: bookings.map((booking) => ({
-      ...booking,
-      hourlyPriceSnapshot: Number(booking.hourlyPriceSnapshot),
-      totalPrice: Number(booking.totalPrice),
-      refundAmount:
-        booking.refundAmount === null
-          ? null
-          : Number(booking.refundAmount),
-    })),
+    bookings: bookings.map(toBookingDto),
   };
 }

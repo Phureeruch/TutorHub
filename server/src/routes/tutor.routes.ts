@@ -13,7 +13,7 @@ const router = Router();
 const subjectSchema = z.object({
   subjectId: z.number().int().positive(),
   hourlyPrice: z.number(),
-  levels: z.array(z.string()),
+  levels: z.array(z.string()).optional().default([]),
   topics: z.string().nullable().optional(),
 });
 

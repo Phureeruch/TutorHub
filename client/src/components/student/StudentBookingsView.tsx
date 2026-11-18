@@ -38,8 +38,8 @@ export function StudentBookingsView() {
                 <span className="text-muted-ink small">{formatHours(b.durationHours)}</span>
               </div>
               <div className="th-booking-what">
-                <h2 className="h3 mb-1">{subjectNameOf(db, b.subjectId)}</h2>
-                <p className="mb-1">with {userNameOf(db, b.tutorId)}</p>
+                <h2 className="h3 mb-1">{subjectNameOf(db, b.subjectId, b.subject)}</h2>
+                <p className="mb-1">with {userNameOf(db, b.tutorId, b.tutor)}</p>
                 {b.notes && <p className="th-booking-notes mb-2">“{b.notes}”</p>}
                 <BookingStatusTags booking={b} />
                 <div className="mt-2">
@@ -53,7 +53,7 @@ export function StudentBookingsView() {
                   </button>
                 </div>
               </div>
-              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId, b.subjectId)} />
+              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId, b.subjectId, b.currentHourlyPrice)} />
             </li>
           ))}
         </ol>

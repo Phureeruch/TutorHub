@@ -1,4 +1,3 @@
-
 import 'dotenv/config';
 
 import express from 'express';
@@ -10,8 +9,9 @@ import availabilityRoutes from './routes/availability.routes.js';
 import tutorRoutes from './routes/tutor.routes.js';
 import discoveryRoutes from './routes/discovery.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import attachmentRoutes from './routes/attachment.routes.js';
 
-const app = express();
+export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
@@ -45,8 +45,13 @@ app.use('/api/tutor/availability', availabilityRoutes);
 app.use('/api', discoveryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/attachments', attachmentRoutes);
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`TutorHub API running at http://localhost:${PORT}`);
-});
+// Start server outside test mode so integration tests can bind ephemeral ports cleanly.
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`TutorHub API running at http://localhost:${PORT}`);
+  });
+}
+
+export default app;

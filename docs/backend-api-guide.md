@@ -1,17 +1,15 @@
 # Backend API Guide — TutorHub (Sprint 1 → real API)
 
 **For:** the backend team (Express + Prisma in `server/`)
-**Status:** the Sprint 1 client in `client/` is feature-complete against an in-browser mock of the API. This guide is the hand-off: what to build so the client can switch from the mock to `server/` without UI changes.
-**Read with:** [SRS Draft 2](srs.md) (rules), [SDS v2.0](system-sds.md) (schema §2, API §4). Where this guide and the SDS differ, the difference is listed in [§2](#2-changes-from-sds-v20-team-review) and needs an SDS update.
+**Status:** Sprint 1 client (`client/`) and server (`server/`) are integrated via `client/src/api/httpClient.ts` and the Vite `/api` proxy. Both [SRS Draft 2 (v2.1)](srs.md) and [SDS v2.0](system-sds.md) have been updated with the team-review decisions (R1–R5).
 
 ---
 
 ## 0. TL;DR
 
-1. **The mock is the executable contract.** `client/src/api/mockApi.ts` implements every endpoint the UI calls, as pure functions that throw `ApiError(status, message)`. `client/src/api/mockApi.test.ts` pins the behaviour (status codes, messages, BR rules). Port those tests first, then make them pass against Express.
-2. **`server/prisma/schema.prisma` is out of date.** It still has the pre-Draft-2 `TutorSlot` model. Replace it with SDS §2 plus the review changes in §2 below, and create a fresh migration.
-3. **Six endpoints the UI needs are missing from SDS §4** (subjects list, tutor directory, own profile, own schedule, admin summary, embedded names on bookings). See [§5](#5-endpoints-the-client-needs-that-sds-4-does-not-list).
-4. **Two review features need a team decision before backend work:** lecture-file attachments (SRS §4.2 says out of scope) and teaching levels/topics (not in SRS). See [§9](#9-open-decisions).
+1. **The mock and HTTP client share the same contract.** `client/src/api/mockApi.ts` implements the pure mock API used by component tests, while `client/src/api/httpClient.ts` talks to Express over `/api/*`.
+2. **`server/prisma/schema.prisma` is updated** with `TeachingLevel`, per-subject `TutorSubject.hourlyPrice`, `BookingAttachment`, and `Decimal(10, 2)` money columns.
+3. **All Sprint 1 endpoints (including the 6 extra endpoints in §5 and `/api/attachments` in §6)** are implemented in `server/src/routes/`.
 
 ---
 
@@ -19,13 +17,10 @@
 
 | Area | State |
 |---|---|
-| `client/` | All Sprint 1 screens built and tested (200+ Vitest tests). Talks to `MockAppContext`, which calls `mockApi.ts` and stores a fake DB in `localStorage`. |
-| `server/src/server.ts` | Express 5 app, CORS, JSON body parser, `GET /health` with a DB ping. |
-| `server/src/routes/booking.routes.ts` | Placeholders only; comments cite old rule numbers (BR-01 "double booking" is now BR-07/BR-08 in Draft 2). |
-| `server/prisma/schema.prisma` | **Old model** (`TutorSlot`, `SlotStatus`, `Booking.slotId`). Does not match SDS v2.0. Its one migration can be dropped while there is no shared data. |
-| Auth, validation, tests | Not started on the server. `npm test` is a placeholder. |
-
-Stack already installed in `server/`: Express 5, Prisma 7 with `@prisma/adapter-pg`, `pg`, `tsx`, TypeScript (strict, `nodenext`). Still to add: `bcrypt`, `jsonwebtoken`, `zod` (request validation), `vitest` + `supertest` (tests).
+| `client/` | All Sprint 1 screens built and tested (200+ Vitest tests). Uses `httpClient.ts` against Express in app mode and `mockApi.ts` in isolated UI tests. |
+| `server/src/server.ts` | Express 5 app, CORS, JSON body parser, `GET /health` with DB ping, and `/api/auth`, `/api/tutor`, `/api/tutor/availability`, `/api/bookings`, `/api/attachments`, `/api/admin`, discovery routes. |
+| `server/prisma/schema.prisma` | Matches SDS §2 (v2.1) with `Availability`, `Booking`, `TutorSubject`, `BookingAttachment`, and GiST exclusion constraints. |
+| Auth, validation, tests | Implemented with `bcrypt`, `jsonwebtoken`, `zod`, and `tsx --test` unit + DB/HTTP integration tests. |
 
 ---
 
@@ -123,9 +118,9 @@ Each entry names the mock function that defines the behaviour and the test block
 
 | Endpoint | Request | Success | Errors | Mock / tests |
 |---|---|---|---|---|
-| `POST /api/auth/register` | `{ email, password, name }` | `201 { message, userId }`. Creates `STUDENT`, `isEmailVerified=false` (BR-01, BR-02). | `400` blank name / bad email / password < 8 chars · `409` email exists | `registerStudent` · `registerStudent (FR-02, BR-01, BR-02)` |
+| `POST /api/auth/register` | `{ email, password, name }` | `201 { message, userId, token, user }`. Creates `STUDENT`, `isEmailVerified=false` (BR-01, BR-02). | `400` blank name / bad email / password < 8 chars · `409` email exists | `registerStudent` · `registerStudent (FR-02, BR-01, BR-02)` |
 | `POST /api/auth/login` | `{ email, password }` | `200 { token, user }`; `user` has no password. Email is matched trimmed and lower-cased. | `401 "Email or password is incorrect."` (same message for both cases) | `login` · `login (FR-01)` |
-| `POST /api/auth/verify-email` | `{}` (auth) | `200 { message, isEmailVerified: true }` | `401` | `verifyEmail` · `verifyEmail (FR-04)` |
+| `POST /api/auth/verify-email` | `{}` (auth) | `200 { message, isEmailVerified: true, user }` | `401` | `verifyEmail` · `verifyEmail (FR-04)` |
 | `POST /api/auth/reset-password` | `{ email, newPassword }` | `200 { message }`, **also for unknown emails**, so the endpoint can't be used to find accounts. | `400` password < 8 | `resetPassword` · `resetPassword (FR-04)` |
 
 Add `GET /api/auth/me` → `200 { user }` so the client can restore a session from a stored token (the mock keeps `currentUserId` in storage).
@@ -266,7 +261,7 @@ The client type is `Booking` in `client/src/types/types.ts`. Return it with the 
 | `GET /api/availability` | any | Find a tutor (§5.2) | `200 TutorListing[]` |
 | `GET /api/tutor/profile` | `TUTOR` | Profile form initial values | `200 TutorListing` without `availabilities` |
 | `GET /api/tutor/availability` | `TUTOR` | Own schedule with open windows + booked lessons | `200 { availabilities: Availability[], bookings: Booking[] }` (future, sorted) |
-| `GET /api/admin/summary` | `ADMIN` | Stat tiles on All bookings | `200 { totalBookings, mockRevenue, activeTutors, students }` |
+| `GET /api/admin/summary` | `ADMIN` | Stat tiles on All bookings | `200 { totalBookings, mockRevenue, activeTutors, verifiedStudents, totalStudents }` |
 | `GET /api/auth/me` | any | Restore session on reload | `200 { user }` |
 
 ### 5.1 Admin summary
@@ -275,7 +270,8 @@ Formula from `client/src/components/admin/adminSummary.ts`:
 - `totalBookings`: all bookings.
 - `mockRevenue`: sum of `totalPrice` over non-cancelled bookings.
 - `activeTutors`: approved tutors.
-- `students`: student accounts.
+- `verifiedStudents`: student accounts with `isEmailVerified = true`.
+- `totalStudents`: all student accounts.
 
 Compute it with `count` / `aggregate` queries rather than loading rows.
 
@@ -308,22 +304,19 @@ Rules (mock: `listTutorDirectory`, tests: `listTutorDirectory (FR-07)`):
 
 ---
 
-## 6. Lecture-file attachments (R4): only if the team accepts it
+## 6. Lecture-file attachments (R4 — Accepted in SRS v2.1)
 
-Recommended two-step flow, so the booking transaction never waits on file I/O:
+Two-step upload flow (with inline metadata fallback on `POST /api/bookings`), so the booking transaction never waits on file I/O:
 
-1. `POST /api/attachments` (`STUDENT`, `multipart/form-data`, field `file`, one file per request).
-   - Validate type (allow-list on the sniffed MIME, not the extension) and size ≤ 20 MB. Limits and messages: `client/src/utils/attachments.ts` (`attachmentError`).
-   - Store the file outside the web root under a random key.
+1. `POST /api/attachments` (`STUDENT`, `multipart/form-data` field `file`, or JSON `{ name, size, type }`).
+   - Validate type (allow-list on MIME/magic bytes or extension) and size ≤ 20 MB. Limits and messages match `client/src/utils/attachments.ts` (`attachmentError`).
+   - Store uploaded file bytes outside the web root under a random UUID key (`UPLOAD_DIR`).
    - Insert a row with `bookingId = null`, `uploadedById = student`.
    - Returns `201 { id, name, size, type }`.
-2. `POST /api/bookings` with `attachmentIds` (≤ 5). Inside the booking transaction:
+2. `POST /api/bookings` with `attachmentIds` (≤ 5) and/or inline `attachments`. Inside the booking transaction:
    - check every id belongs to this student and is unattached → else `400`;
    - set `bookingId`.
-3. `GET /api/attachments/:id` streams the file to the booking's student, tutor or an admin (same rule as `GET /api/bookings/:id`). Send `Content-Disposition: attachment` so it downloads.
-4. A daily job deletes unattached uploads older than 24 h.
-
-The prototype stores only `{ name, size, type }` and uploads nothing. The real DTO adds `id` so the client can link to `GET /api/attachments/:id`.
+3. `GET /api/attachments/:id` streams the stored file (or returns metadata JSON if uploaded without file bytes) to the uploader, booking's student, booking's tutor, or an admin. Sends `Content-Disposition: attachment` when downloading.
 
 ---
 
@@ -374,12 +367,12 @@ Pure rules (`client/src/utils/bookingRules.ts` + its tests) have no browser depe
 
 ---
 
-## 9. Open decisions
+## 9. Decisions (Resolved for Sprint 1)
 
-| # | Decision | Owner | Blocks |
+| # | Decision | Status | Outcome |
 |---|---|---|---|
-| D1 | Accept lecture-file attachments (R4) and update SRS §4.2, or drop it from the UI. | Team + PO | §6, `BookingAttachment` |
-| D2 | Teaching levels list: High school / Undergraduate / Graduate, or the school's own year levels. | Team | `TeachingLevel` enum |
-| D3 | Add levels/topics (R3) and per-subject rates (R2) to SRS FR-05 and SDS §2/§4.2. | Doc owners | SDS sign-off |
-| D4 | Money as `Decimal(10,2)` instead of SDS `Float`. | Backend | Migration |
-| D5 | Adopt the extra endpoints in §5 into SDS §4. | Backend + Frontend | Client swap |
+| D1 | Accept lecture-file attachments (R4) and update SRS §4.1/§4.2. | ✅ Accepted | `BookingAttachment` kept; SRS & SDS updated; `/api/attachments` implemented. |
+| D2 | Teaching levels list: High school / Undergraduate / Graduate. | ✅ Accepted | `TeachingLevel` enum (`HIGH_SCHOOL`, `UNDERGRADUATE`, `GRADUATE`) adopted. |
+| D3 | Add levels/topics (R3) and per-subject rates (R2) to SRS FR-05 and SDS §2/§4.2. | ✅ Accepted | Documented in SRS v2.1 and SDS §2/§4.2. |
+| D4 | Money as `Decimal(10,2)` instead of SDS `Float`. | ✅ Accepted | `Decimal(10,2)` used in Prisma, serialized as JSON `number`. |
+| D5 | Adopt the extra endpoints in §5 into SDS §4. | ✅ Accepted | Endpoints documented in SDS §4 and wired in `httpClient.ts`. |

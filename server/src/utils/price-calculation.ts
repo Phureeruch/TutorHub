@@ -13,8 +13,8 @@ export function calculateBookingPrice(
 ): BookingPrice {
   const { hourlyPrice, durationHours } = input;
 
-  if (!Number.isFinite(hourlyPrice) || hourlyPrice < 0) {
-    throw new Error('Hourly price must be a valid non-negative number');
+  if (!Number.isFinite(hourlyPrice) || hourlyPrice <= 0) {
+    throw new Error('Hourly price must be a valid positive number');
   }
 
   if (
