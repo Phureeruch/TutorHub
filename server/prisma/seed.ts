@@ -4,7 +4,15 @@ import 'dotenv/config';
 import bcrypt from 'bcrypt';
 import { prisma } from '../src/lib/prisma.js';
 
-const SEED_PASSWORD = 'password123';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Production passwords must come from environment variables.
+const adminPassword = process.env.ADMIN_PASSWORD || (!isProduction ? 'password123' : '');
+if (isProduction && !adminPassword) {
+  throw new Error('ADMIN_PASSWORD environment variable must be set in production mode.');
+}
+
+const demoPassword = process.env.DEMO_USER_PASSWORD || process.env.ADMIN_PASSWORD || 'password123';
 
 const seedAccounts = [
   {
@@ -122,12 +130,15 @@ function at(
 
 async function main() {
   const now = new Date();
-  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
+  const demoPasswordHash = await bcrypt.hash(demoPassword, 12);
 
   // 1. Create or update demo accounts.
   const userIds = new Map<string, number>();
 
   for (const account of seedAccounts) {
+    const passwordHash = account.role === 'ADMIN' ? adminPasswordHash : demoPasswordHash;
+
     const user = await prisma.user.upsert({
       where: { email: account.email },
       create: {
@@ -136,10 +147,10 @@ async function main() {
       },
       update: {
         name: account.name,
-        password: passwordHash,
         role: account.role,
         isEmailVerified: account.isEmailVerified,
         isApproved: account.isApproved,
+        // Existing user password is intentionally NOT overwritten on rerun
       },
     });
 
@@ -331,7 +342,6 @@ async function main() {
   }
 
   console.log('TutorHub seed completed successfully.');
-  console.log(`Demo password: ${SEED_PASSWORD}`);
   console.log(`Accounts: ${seedAccounts.length}`);
   console.log(`Subjects: ${subjectData.length}`);
   console.log(`Tutor profiles: ${tutorProfileData.length}`);

@@ -95,36 +95,38 @@ function SignInForm() {
         </button>
       </form>
 
-      <section className="th-seed" aria-labelledby="seed-heading">
-        <h2 id="seed-heading" className="h3">
-          Seed accounts
-        </h2>
-        <p className="small text-muted-ink mb-2">
-          Development only. Every account uses the password <code>{SEED_PASSWORD}</code>.
-        </p>
-        <ul className="th-seed-list">
-          {SEED_ACCOUNTS.map((account) => (
-            <li key={account.email}>
-              <div>
-                <strong>{account.name}</strong> <span className="th-tag">{ROLE_LABEL[account.role]}</span>
-                <div className="small text-muted-ink">{account.note}</div>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline-ink btn-sm"
-                onClick={() => {
-                  setEmail(account.email)
-                  setPassword(SEED_PASSWORD)
-                  setError(null)
-                }}
-                aria-label={`Fill in ${account.name}'s credentials`}
-              >
-                Fill in
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {(!import.meta.env.PROD || import.meta.env.VITE_SHOW_DEV_HINTS === 'true') && (
+        <section className="th-seed" aria-labelledby="seed-heading">
+          <h2 id="seed-heading" className="h3">
+            Seed accounts
+          </h2>
+          <p className="small text-muted-ink mb-2">
+            Development only. Every account uses the password <code>{SEED_PASSWORD}</code>.
+          </p>
+          <ul className="th-seed-list">
+            {SEED_ACCOUNTS.map((account) => (
+              <li key={account.email}>
+                <div>
+                  <strong>{account.name}</strong> <span className="th-tag">{ROLE_LABEL[account.role]}</span>
+                  <div className="small text-muted-ink">{account.note}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-outline-ink btn-sm"
+                  onClick={() => {
+                    setEmail(account.email)
+                    setPassword(SEED_PASSWORD)
+                    setError(null)
+                  }}
+                  aria-label={`Fill in ${account.name}'s credentials`}
+                >
+                  Fill in
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {resetOpen && (
         <ResetPasswordModal

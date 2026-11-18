@@ -128,14 +128,14 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 
   try {
-    const { attachment, filePath } = await getAttachmentForUser(user, attachmentId);
-    if (filePath) {
+    const { attachment, fileBuffer } = await getAttachmentForUser(user, attachmentId);
+    if (fileBuffer) {
       res.setHeader('Content-Type', attachment.type);
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${safeHeaderFilename(attachment.name)}"`,
       );
-      res.sendFile(filePath);
+      res.send(fileBuffer);
       return;
     }
 
