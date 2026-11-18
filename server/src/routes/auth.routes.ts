@@ -131,4 +131,9 @@ router.get('/me', authenticate, async (_req: Request, res: Response) => {
   }
 });
 
+// POST /api/auth/logout
+router.post('/logout', (_req: Request, res: Response) => {
+  res.status(200).json({ message: 'Logged out successfully.' });
+});
+
 export default router;

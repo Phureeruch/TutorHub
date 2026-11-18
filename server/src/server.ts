@@ -1,5 +1,7 @@
 import 'dotenv/config';
 
+import fs from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import { prisma } from './lib/prisma.js';
@@ -13,12 +15,23 @@ import attachmentRoutes from './routes/attachment.routes.js';
 
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = '0.0.0.0';
 
 // Middleware
-app.use(cors());
+const corsOriginEnv = process.env.CORS_ORIGIN?.trim();
+const corsOptions = corsOriginEnv
+  ? {
+      origin: corsOriginEnv.includes(',')
+        ? corsOriginEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
+        : corsOriginEnv,
+    }
+  : undefined;
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
-// Health check
+// Health & Readiness Endpoints
+// Preserved legacy endpoint
 app.get('/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -38,6 +51,33 @@ app.get('/health', async (_req, res) => {
   }
 });
 
+// Standard /api/health for smoke tests
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'TutorHub API',
+  });
+});
+
+// Standard /api/ready for deployment readiness check
+app.get('/api/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+
+    res.status(200).json({
+      status: 'ready',
+      db: 'connected',
+    });
+  } catch (error) {
+    console.error('Database readiness check failed:', error);
+
+    res.status(503).json({
+      status: 'not_ready',
+      db: 'disconnected',
+    });
+  }
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tutor', tutorRoutes);
@@ -47,10 +87,22 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/attachments', attachmentRoutes);
 
+// In production, serve the built React frontend when available
+const clientDistPath = path.resolve(process.env.CLIENT_DIST_DIR || '../client/dist');
+if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('/{*splat}', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 // Start server outside test mode so integration tests can bind ephemeral ports cleanly.
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`TutorHub API running at http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`TutorHub API running at http://${HOST}:${PORT}`);
   });
 }
 

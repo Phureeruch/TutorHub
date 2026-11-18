@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '../lib/prisma.js';
 import type { AuthenticatedUser } from '../middleware/auth.js';
@@ -107,12 +107,6 @@ export async function createAttachmentUpload(
   const validated = validateSingleAttachment(input);
   const storageKey = randomUUID();
 
-  if (input.content) {
-    const uploadDir = getUploadDir();
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, storageKey), input.content);
-  }
-
   const created = await prisma.bookingAttachment.create({
     data: {
       bookingId: null,
@@ -121,6 +115,7 @@ export async function createAttachmentUpload(
       mimeType: validated.mimeType,
       sizeBytes: validated.sizeBytes,
       storageKey,
+      fileData: input.content ? Uint8Array.from(input.content) : null,
     },
     select: {
       id: true,
@@ -169,13 +164,17 @@ export async function getAttachmentForUser(
     throw new AttachmentError(403, 'You are not allowed to access this attachment.');
   }
 
-  const candidatePath = path.join(getUploadDir(), path.basename(attachment.storageKey));
-  let filePath: string | null = null;
-  try {
-    await access(candidatePath);
-    filePath = candidatePath;
-  } catch {
-    filePath = null;
+  let fileBuffer: Buffer | null = attachment.fileData ? Buffer.from(attachment.fileData) : null;
+
+  // Fallback to local filesystem if file was stored previously on disk before migration
+  if (!fileBuffer) {
+    const candidatePath = path.join(getUploadDir(), path.basename(attachment.storageKey));
+    try {
+      await access(candidatePath);
+      fileBuffer = await readFile(candidatePath);
+    } catch {
+      fileBuffer = null;
+    }
   }
 
   return {
@@ -185,6 +184,6 @@ export async function getAttachmentForUser(
       size: attachment.sizeBytes,
       type: attachment.mimeType,
     },
-    filePath,
+    fileBuffer,
   };
 }

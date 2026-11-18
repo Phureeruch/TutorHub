@@ -55,12 +55,15 @@ function Shell() {
     )
   }
 
+  const showDemoToolbar =
+    !import.meta.env.PROD || import.meta.env.VITE_ENABLE_DEMO_TOOLBAR === 'true'
+
   return (
     <>
       <a className="th-skip" href="#main">
         Skip to content
       </a>
-      <DemoToolbar />
+      {showDemoToolbar && <DemoToolbar />}
       {currentUser && <AppNavbar currentPath={resolved} />}
       {currentUser && <EmailVerificationBanner key={currentUser.id} />}
       <div id="main">{renderView(resolved)}</div>
