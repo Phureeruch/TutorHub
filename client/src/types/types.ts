@@ -1,6 +1,5 @@
 // Mirrors the Prisma schema in docs/system-sds.md §2. Date columns are ISO-8601
-// strings because that is how the REST API serialises them, so swapping the
-// mock store for real fetch calls does not change any component.
+// strings because that is how the REST API serialises them.
 
 export type Role = 'STUDENT' | 'TUTOR' | 'ADMIN'
 export type BookingStatus = 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
@@ -24,8 +23,6 @@ export interface Subject {
   createdAt: string
 }
 
-// Rates are set per subject, so hourlyPrice lives on TutorSubject. SDS §2 still
-// has TutorProfile.hourlyPrice; docs/backend-api-guide.md §2 covers the migration.
 export interface TutorProfile {
   id: number
   userId: number
@@ -34,7 +31,7 @@ export interface TutorProfile {
   updatedAt: string
 }
 
-/** Who a tutor teaches a subject to. Not in SRS Draft 2 or SDS §2 yet (backend-api-guide.md §2, R3). */
+/** Who a tutor teaches a subject to (SRS v2.1, SDS §2). */
 export type TeachingLevel = 'HIGH_SCHOOL' | 'UNDERGRADUATE' | 'GRADUATE'
 
 export interface TutorSubject {
@@ -47,8 +44,9 @@ export interface TutorSubject {
   topics: string | null
 }
 
-/** Lecture file a student attaches to a booking. Not in SRS Draft 2 (§4.2 lists attachments as out of scope). */
+/** Lecture file a student attaches to a booking (SRS v2.1 §4.1, SDS §2). */
 export interface BookingAttachment {
+  id?: number
   name: string
   size: number
   type: string
@@ -63,16 +61,25 @@ export interface Availability {
   updatedAt: string
 }
 
+export interface NamedEntity {
+  id: number
+  name: string
+}
+
 export interface Booking {
   id: number
   studentId: number
   tutorId: number
   subjectId: number
+  student?: NamedEntity
+  tutor?: NamedEntity
+  subject?: NamedEntity
   startTime: string
   endTime: string
   durationHours: number
   hourlyPriceSnapshot: number
   totalPrice: number
+  currentHourlyPrice?: number | null
   notes: string | null
   attachments: BookingAttachment[]
   lessonSummary: string | null
@@ -84,6 +91,14 @@ export interface Booking {
   refundAmount: number | null
   createdAt: string
   updatedAt: string
+}
+
+export interface AdminSummary {
+  totalBookings: number
+  mockRevenue: number
+  activeTutors: number
+  verifiedStudents: number
+  totalStudents: number
 }
 
 // Request payloads, matching docs/system-sds.md §4.
@@ -101,7 +116,6 @@ export interface TaughtSubjectInput {
   topics?: string
 }
 
-// Replaces SDS §4.2 `{ bio?, hourlyPrice, subjectIds }`: rate, levels and topics are per subject.
 export interface UpdateTutorProfileRequest {
   bio?: string
   subjects: TaughtSubjectInput[]
@@ -119,9 +133,12 @@ export interface CreateBookingRequest {
   durationHours: number
   notes?: string
   attachments?: BookingAttachment[]
+  attachmentIds?: number[]
+  /** Raw browser File objects selected in the modal for multipart upload. */
+  attachmentFiles?: File[]
 }
 
-// Client-side mock database standing in for PostgreSQL during Sprint 1 UI work.
+// Client-side mock database standing in for PostgreSQL during unit/UI tests.
 export interface MockDb {
   users: User[]
   // Dev-only plaintext credentials; the real backend stores bcrypt hashes (NFR-01).

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { listTutorDirectory, type TutorListing } from '../../api/mockApi'
 import { useMockApp } from '../../context/appContext'
 import { useNow } from '../../hooks/useNow'
@@ -63,16 +63,35 @@ function TutorEntry({ listing, onBook }: { listing: TutorListing; onBook(a: Avai
 }
 
 export function StudentDiscoveryView() {
-  const { db } = useMockApp()
+  const { mode, db, fetchDirectory } = useMockApp()
   const now = useNow()
   const [subjectId, setSubjectId] = useState<number | undefined>(undefined)
   const [tutorId, setTutorId] = useState<number | undefined>(undefined)
   const [date, setDate] = useState('')
   const [level, setLevel] = useState<TeachingLevel | undefined>(undefined)
+  const [apiListings, setApiListings] = useState<TutorListing[] | null>(null)
   const [selection, setSelection] = useState<{ listing: TutorListing; availability: Availability } | null>(null)
   const [confirmed, setConfirmed] = useState<Booking | null>(null)
 
-  const listings = listTutorDirectory(db, { now, subjectId, tutorId, date: date || undefined, level })
+  useEffect(() => {
+    if (mode !== 'api') return
+    let active = true
+    void fetchDirectory({ subjectId, tutorId, date: date || undefined, level })
+      .then((data) => {
+        if (active) setApiListings(data)
+      })
+      .catch(() => {
+        // Keep current view on transient fetch failure.
+      })
+    return () => {
+      active = false
+    }
+  }, [mode, subjectId, tutorId, date, level, db.availabilities, fetchDirectory])
+
+  const listings =
+    mode === 'api' && apiListings !== null
+      ? apiListings
+      : listTutorDirectory(db, { now, subjectId, tutorId, date: date || undefined, level })
   const tutors = db.users.filter((u) => u.role === 'TUTOR' && u.isApproved)
   const filtered = subjectId !== undefined || tutorId !== undefined || date !== '' || level !== undefined
   const clearFilters = () => {
@@ -103,7 +122,7 @@ export function StudentDiscoveryView() {
       {confirmed && (
         <div className="th-notice th-notice-success mb-4 d-flex flex-wrap justify-content-between gap-2" role="status">
           <span>
-            Booked: {subjectNameOf(db, confirmed.subjectId)} on {formatDay(confirmed.startTime)},{' '}
+            Booked: {subjectNameOf(db, confirmed.subjectId, confirmed.subject)} on {formatDay(confirmed.startTime)},{' '}
             {formatTimeRange(confirmed.startTime, confirmed.endTime)}. Paid {formatMoney(confirmed.totalPrice)}.
           </span>
           <AppLink to="/student/bookings" className="fw-semibold">

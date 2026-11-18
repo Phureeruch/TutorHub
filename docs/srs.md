@@ -1,7 +1,8 @@
 # TutorHub
 # Software Requirements Specification (SRS)
 
-**Draft 2 – Revised Requirements (Post-Clarification)**
+**Draft 2 – Revised Requirements (Post-Clarification)**  
+**Revision 2.1 (Sprint 1 review):** per-subject hourly prices, teaching levels and topics (FR-05), and optional lecture-file attachments on bookings (§4.1, FR-08, BR-08) moved into scope.
 
 ## 1. Introduction
 
@@ -71,6 +72,8 @@ TutorHub includes:
 10. Lesson completion and lesson notes.
 11. Student reviews and editable ratings.
 12. Basic Admin management of accounts, subjects, and bookings.
+13. Optional lecture-file attachments on a booking (up to 5 files, at most 20 MB each; PDF, PowerPoint, Word, plain text, or image files), visible only to the booking's Student, Tutor, and Admin.
+14. Per-subject teaching information: each subject a Tutor teaches has its own hourly price, teaching levels (High school, Undergraduate, Graduate), and an optional short topics description.
 
 ### 4.2 Out of Scope
 
@@ -79,7 +82,7 @@ The following features are not included in the current project scope:
 - Real payment gateway and real money transactions.
 - Tutor withdrawal and payout processing.
 - Temporary Reservation and reservation expiration (no checkout hold timers).
-- File attachments.
+- File attachments other than optional lecture files on a booking (e.g. attachments on reviews, chat, or profiles), file previews, and virus scanning.
 - No-show reporting and dispute management.
 - Video calling and live chat.
 - Email, SMS, and push notifications.
@@ -107,7 +110,7 @@ The system shall provide mock email verification for Students and a mock passwor
 ### 5.2 Tutor and Availability Management
 
 **FR-05: Tutor Profile and Subject Management**  
-Tutors shall be able to manage their profile, teaching information, selected subjects, and hourly prices. Admin shall be able to manage the available subject list.
+Tutors shall be able to manage their profile, teaching information, selected subjects, and hourly prices. Hourly prices are set per subject. For each subject, a Tutor may also state the teaching levels they teach it at (High school, Undergraduate, Graduate) and a short description of the topics covered (at most 200 characters). Admin shall be able to manage the available subject list.
 
 **FR-06: Tutor Availability Management**  
 Tutors shall be able to create, view, update, and remove their available time periods according to the booking status.
@@ -118,7 +121,7 @@ Students shall be able to select a subject and search for available Tutors by ti
 ### 5.3 Booking and Payment
 
 **FR-08: Booking Creation**  
-Students shall be able to book an available time period by selecting a Tutor, subject, start time (aligned to 1-hour intervals starting at :00 or :30), and lesson duration in whole hours.
+Students shall be able to book an available time period by selecting a Tutor, subject, start time (aligned to 1-hour intervals starting at :00 or :30), and lesson duration in whole hours. Students may optionally add notes and attach up to 5 lecture files (at most 20 MB each; PDF, PowerPoint, Word, plain text, or image files) for the Tutor to review before the lesson.
 
 **FR-09: Booking Conflict Prevention**  
 The system shall check availability and prevent overlapping bookings for the same Tutor or the same Student.
@@ -169,10 +172,10 @@ A booking must fit entirely within one Tutor availability period. A Student may 
 The system must prevent overlapping confirmed bookings for the same Tutor or the same Student, regardless of Tutor identity.
 
 **BR-08: Booking Confirmation and Atomic Consistency**  
-A booking shall be confirmed only after the mock payment succeeds and the system successfully verifies that the selected time is still available. The availability check, mock payment, and booking confirmation must execute within an atomic transaction. If the selected time is no longer available (e.g., due to a concurrent booking confirmation), the mock payment and booking creation must be atomically rolled back, preventing double booking and ensuring no payment record is persisted for a failed booking.
+A booking shall be confirmed only after the mock payment succeeds and the system successfully verifies that the selected time is still available. The availability check, mock payment, and booking confirmation must execute within an atomic transaction. If the selected time is no longer available (e.g., due to a concurrent booking confirmation), the mock payment and booking creation must be atomically rolled back, preventing double booking and ensuring no payment record is persisted for a failed booking. Any lecture files attached to the booking are linked to it inside the same transaction, so a failed booking leaves no files linked to it.
 
 **BR-09: Price Snapshot**  
-The system shall record the hourly price and total price when a booking is confirmed. Later price changes shall not affect existing bookings.
+The system shall record the hourly price of the chosen subject and the total price when a booking is confirmed. Later price changes shall not affect existing bookings.
 
 **BR-10: Confirmed Booking Changes**  
 A confirmed booking cannot change its Tutor, subject, date, start time, or duration. The Student must cancel and create a new booking instead.

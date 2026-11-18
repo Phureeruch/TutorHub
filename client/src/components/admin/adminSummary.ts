@@ -1,12 +1,6 @@
-import type { MockDb } from '../../types/types'
+import type { AdminSummary, MockDb } from '../../types/types'
 
-export interface AdminSummary {
-  totalBookings: number
-  mockRevenue: number
-  activeTutors: number
-  verifiedStudents: number
-  totalStudents: number
-}
+export type { AdminSummary }
 
 export function computeAdminSummary(db: MockDb): AdminSummary {
   const students = db.users.filter((u) => u.role === 'STUDENT')

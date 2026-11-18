@@ -83,6 +83,8 @@ function bookingInput(f: Awaited<ReturnType<typeof createFixture>>, overrides: {
   studentId?: number;
   startTime?: Date;
   durationHours?: number;
+  attachmentIds?: number[];
+  attachments?: { name: string; size: number; type: string }[];
 } = {}) {
   return {
     studentId: overrides.studentId ?? f.student.id,
@@ -91,10 +93,15 @@ function bookingInput(f: Awaited<ReturnType<typeof createFixture>>, overrides: {
     startTime: overrides.startTime ?? f.availability.startTime,
     durationHours: overrides.durationHours ?? 1,
     notes: 'Integration test lesson',
+    ...(overrides.attachmentIds !== undefined ? { attachmentIds: overrides.attachmentIds } : {}),
+    ...(overrides.attachments !== undefined ? { attachments: overrides.attachments } : {}),
   };
 }
 
 afterEach(async () => {
+  if (userIds.length) {
+    await prisma.bookingAttachment.deleteMany({ where: { uploadedById: { in: userIds } } });
+  }
   if (bookingIds.length) {
     await prisma.bookingAttachment.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });
@@ -195,4 +202,32 @@ test('only one concurrent booking can consume the same availability', async () =
     where: { tutorId: f.tutor.id, status: 'CONFIRMED' },
   });
   assert.equal(count, 1);
+});
+
+test('rolls back attachment linkage when a booking fails due to conflict (BR-08)', async () => {
+  const f = await createFixture();
+  const secondStudent = await createUser('STUDENT');
+
+  // First student books the slot cleanly.
+  const first = await createBooking(bookingInput(f));
+  bookingIds.push(first.id);
+
+  // Second student uploaded an attachment, then tries to book the already-taken slot.
+  const upload = await prisma.bookingAttachment.create({
+    data: {
+      uploadedById: secondStudent.id,
+      fileName: 'homework.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      storageKey: randomUUID(),
+    },
+  });
+
+  await assert.rejects(
+    createBooking(bookingInput(f, { studentId: secondStudent.id, attachmentIds: [upload.id] })),
+    (error: unknown) => error instanceof BookingError && error.statusCode === 409,
+  );
+
+  const persistedUpload = await prisma.bookingAttachment.findUnique({ where: { id: upload.id } });
+  assert.equal(persistedUpload?.bookingId, null);
 });

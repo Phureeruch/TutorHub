@@ -1,4 +1,3 @@
-
 import { prisma } from '../lib/prisma.js';
 
 export async function getAdminSummary() {
@@ -6,7 +5,8 @@ export async function getAdminSummary() {
     totalBookings,
     revenueResult,
     activeTutors,
-    students,
+    verifiedStudents,
+    totalStudents,
   ] = await Promise.all([
     // Count all bookings, including cancelled bookings.
     prisma.booking.count(),
@@ -29,6 +29,14 @@ export async function getAdminSummary() {
       },
     }),
 
+    // Count verified student accounts.
+    prisma.user.count({
+      where: {
+        role: 'STUDENT',
+        isEmailVerified: true,
+      },
+    }),
+
     // Count all student accounts.
     prisma.user.count({
       where: {
@@ -41,6 +49,7 @@ export async function getAdminSummary() {
     totalBookings,
     mockRevenue: Number(revenueResult._sum.totalPrice ?? 0),
     activeTutors,
-    students,
+    verifiedStudents,
+    totalStudents,
   };
 }

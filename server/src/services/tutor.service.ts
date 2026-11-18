@@ -1,4 +1,3 @@
-
 import { prisma } from '../lib/prisma.js';
 
 const VALID_LEVELS = [
@@ -35,36 +34,13 @@ function isValidLevel(level: string): level is TeachingLevelValue {
   return VALID_LEVELS.includes(level as TeachingLevelValue);
 }
 
-function buildProfileResponse(profile: {
-  user: { id: number; name: string };
-  bio: string | null;
-  subjects: {
-    subjectId: number;
-    hourlyPrice: { toNumber(): number };
-    levels: string[];
-    topics: string | null;
-    subject: { id: number; name: string };
-  }[];
-}) {
-  return {
-    id: profile.user.id,
-    name: profile.user.name,
-    bio: profile.bio,
-    subjects: profile.subjects.map((item) => ({
-      subjectId: item.subjectId,
-      subjectName: item.subject.name,
-      hourlyPrice: item.hourlyPrice.toNumber(),
-      levels: item.levels,
-      topics: item.topics,
-    })),
-  };
-}
-
 const profileInclude = {
   user: {
     select: {
       id: true,
       name: true,
+      role: true,
+      isApproved: true,
     },
   },
   subjects: {
@@ -73,6 +49,8 @@ const profileInclude = {
         select: {
           id: true,
           name: true,
+          description: true,
+          createdAt: true,
         },
       },
     },
@@ -80,7 +58,53 @@ const profileInclude = {
       subjectId: 'asc' as const,
     },
   },
-};
+} as const;
+
+function buildProfileResponse(profile: {
+  id: number;
+  userId: number;
+  bio: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  user: {
+    id: number;
+    name: string;
+    role: string;
+    isApproved: boolean;
+  };
+  subjects: {
+    subjectId: number;
+    hourlyPrice: { toNumber(): number };
+    levels: string[];
+    topics: string | null;
+    subject: {
+      id: number;
+      name: string;
+      description: string | null;
+      createdAt: Date;
+    };
+  }[];
+}) {
+  return {
+    user: profile.user,
+    profile: {
+      id: profile.id,
+      userId: profile.userId,
+      bio: profile.bio,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
+    },
+    subjects: profile.subjects.map((item) => ({
+      id: item.subject.id,
+      name: item.subject.name,
+      description: item.subject.description,
+      createdAt: item.subject.createdAt,
+      hourlyPrice: item.hourlyPrice.toNumber(),
+      levels: item.levels,
+      topics: item.topics,
+    })),
+  };
+}
 
 export async function getTutorProfile(userId: number) {
   const profile = await prisma.tutorProfile.findUnique({

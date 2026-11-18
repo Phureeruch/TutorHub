@@ -1,10 +1,10 @@
-
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma.js';
 
 const SALT_ROUNDS = 12;
 const TOKEN_EXPIRES_IN = '8h';
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export class AuthError extends Error {
   constructor(
@@ -43,6 +43,17 @@ function createToken(userId: number, role: string): string {
   );
 }
 
+const publicUserSelect = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  isEmailVerified: true,
+  isApproved: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 function toPublicUser(user: {
   id: number;
   email: string;
@@ -74,11 +85,11 @@ export async function registerStudent(input: {
   const name = input.name.trim();
 
   if (!name) {
-    throw new AuthError('Name is required.', 400);
+    throw new AuthError('Enter your name.', 400);
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new AuthError('Invalid email address.', 400);
+  if (!EMAIL_PATTERN.test(email)) {
+    throw new AuthError('Enter a valid email address.', 400);
   }
 
   if (input.password.length < 8) {
@@ -91,7 +102,7 @@ export async function registerStudent(input: {
   });
 
   if (existingUser) {
-    throw new AuthError('Email is already registered.', 409);
+    throw new AuthError('An account with this email already exists.', 409);
   }
 
   const hashedPassword = await bcrypt.hash(input.password, SALT_ROUNDS);
@@ -106,12 +117,16 @@ export async function registerStudent(input: {
         isEmailVerified: false,
         isApproved: false,
       },
-      select: { id: true },
+      select: publicUserSelect,
     });
+
+    const publicUser = toPublicUser(user);
 
     return {
       message: 'Registration successful. Please verify your email.',
       userId: user.id,
+      token: createToken(user.id, user.role),
+      user: publicUser,
     };
   } catch (error) {
     // Also handle duplicate emails created concurrently.
@@ -121,7 +136,7 @@ export async function registerStudent(input: {
       'code' in error &&
       error.code === 'P2002'
     ) {
-      throw new AuthError('Email is already registered.', 409);
+      throw new AuthError('An account with this email already exists.', 409);
     }
 
     throw error;
@@ -149,33 +164,33 @@ export async function login(input: {
 }
 
 export async function verifyEmail(userId: number) {
-  const user = await prisma.user.findUnique({
+  const existing = await prisma.user.findUnique({
     where: { id: userId },
-    select: {
-      id: true,
-      isEmailVerified: true,
-    },
+    select: publicUserSelect,
   });
 
-  if (!user) {
+  if (!existing) {
     throw new AuthError('User not found.', 404);
   }
 
-  if (user.isEmailVerified) {
+  if (existing.isEmailVerified) {
     return {
       message: 'Email is already verified.',
       isEmailVerified: true,
+      user: toPublicUser(existing),
     };
   }
 
-  await prisma.user.update({
+  const updated = await prisma.user.update({
     where: { id: userId },
     data: { isEmailVerified: true },
+    select: publicUserSelect,
   });
 
   return {
     message: 'Email verified successfully.',
     isEmailVerified: true,
+    user: toPublicUser(updated),
   };
 }
 
@@ -183,11 +198,16 @@ export async function resetPassword(input: {
   email: string;
   newPassword: string;
 }) {
+  const email = normalizeEmail(input.email);
+
+  if (!EMAIL_PATTERN.test(email)) {
+    throw new AuthError('Enter a valid email address.', 400);
+  }
+
   if (input.newPassword.length < 8) {
     throw new AuthError('Password must be at least 8 characters.', 400);
   }
 
-  const email = normalizeEmail(input.email);
   const hashedPassword = await bcrypt.hash(input.newPassword, SALT_ROUNDS);
 
   await prisma.user.updateMany({
@@ -204,6 +224,7 @@ export async function resetPassword(input: {
 export async function getCurrentUser(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    select: publicUserSelect,
   });
 
   if (!user) {

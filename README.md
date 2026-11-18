@@ -7,7 +7,16 @@ A full-stack application connecting tutors and students.
 ### Prerequisites
 
 - Node.js (v18+ recommended)
-- PostgreSQL
+- PostgreSQL (or Docker to run `docker-compose.yml`)
+
+---
+
+### Database Setup (Docker)
+
+Start PostgreSQL on port `5433`:
+```bash
+docker compose up -d
+```
 
 ---
 
@@ -24,19 +33,29 @@ A full-stack application connecting tutors and students.
    ```
 
 3. Configure environment variables:
-   - Verify or update the database credentials in `.env`:
+   - Copy `.env.example` to `.env` and verify the values:
      ```env
-     DATABASE_URL="postgresql://postgres:password@localhost:5432/tutorhub?schema=public"
+     DATABASE_URL="postgresql://postgres:password@localhost:5433/tutorhub?schema=public"
+     JWT_SECRET="change-me-to-a-long-random-string"
+     PORT=3000
+     UPLOAD_DIR="uploads"
      ```
 
-4. Push the database schema:
+4. Generate Prisma client, apply database migrations, and seed sample data:
    ```bash
-   npx prisma db push
+   npx prisma generate
+   npm run db:migrate
+   npm run seed
    ```
 
-5. Start the development server:
+5. Start the development server (`http://localhost:3000`):
    ```bash
    npm run dev
+   ```
+
+6. Run server unit & integration tests (requires a `tutorhub_test` database with migrations applied):
+   ```bash
+   npm test
    ```
 
 ---
@@ -53,7 +72,14 @@ A full-stack application connecting tutors and students.
    npm install
    ```
 
-3. Start the client development server:
+3. Start the client development server (`http://localhost:5173`, proxying `/api` to `:3000`):
    ```bash
    npm run dev
+   ```
+
+4. Run client lint, tests, and build:
+   ```bash
+   npm run lint
+   npm test
+   npm run build
    ```
