@@ -147,3 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# OS metadata
+.DS_Store
+
+# Uploaded lecture files (local dev)
+server/uploads/
