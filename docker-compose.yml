@@ -1,3 +1,11 @@
+# ==============================================================================
+# TutorHub Docker Compose Configuration (Episode 3)
+#
+# NOTE: Environment variable fallbacks below provide safe defaults for local
+# development only. In staging and production environments, all secrets must be
+# supplied via environment variables / Secret Manager.
+# ==============================================================================
+
 services:
   db:
     image: postgres:15-alpine
@@ -5,7 +13,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_postgres_password_dev_only}
       POSTGRES_DB: ${POSTGRES_DB:-tutorhub}
     ports:
       - "5434:5432"
@@ -25,13 +33,13 @@ services:
     restart: "no"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_postgres_password_dev_only}
       POSTGRES_DB: ${POSTGRES_DB:-tutorhub}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       DATABASE_URL: ${DATABASE_URL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin password must be set}
-      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-local_admin_password_dev_only}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-local_demo_password_dev_only}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       NODE_ENV: production
     command: ["sh", "-c", "npx prisma migrate deploy && npm run seed"]
@@ -51,12 +59,12 @@ services:
       PORT: 3000
       NODE_ENV: production
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_postgres_password_dev_only}
       POSTGRES_DB: ${POSTGRES_DB:-tutorhub}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       DATABASE_URL: ${DATABASE_URL:-}
-      JWT_SECRET: ${JWT_SECRET:?JWT secret must be set}
+      JWT_SECRET: ${JWT_SECRET:-local_dev_jwt_secret_change_in_production_32chars!}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     depends_on:
       db:
