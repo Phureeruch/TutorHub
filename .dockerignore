@@ -1,0 +1,19 @@
+node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+
+# Explicit subfolder exclusions for root build context
+client/node_modules
+client/dist
+server/node_modules
+server/dist
+
+# Protected untracked items
+server/.agents/
+server/.claude/
+server/tutorhub_backup.sql
