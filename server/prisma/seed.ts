@@ -136,6 +136,39 @@ async function main() {
     ? await bcrypt.hash(demoPassword, 12)
     : '';
 
+  const availabilityData = [
+    { email: 'alice@tutorhub.dev', start: [1, 9, 30], end: [1, 12, 30] },
+    { email: 'alice@tutorhub.dev', start: [2, 13, 0], end: [2, 14, 0] },
+    { email: 'alice@tutorhub.dev', start: [2, 15, 0], end: [2, 17, 0] },
+    { email: 'bob@tutorhub.dev', start: [1, 10, 0], end: [1, 12, 0] },
+    { email: 'bob@tutorhub.dev', start: [2, 13, 30], end: [2, 16, 30] },
+    { email: 'bob@tutorhub.dev', start: [4, 9, 0], end: [4, 10, 0] },
+    { email: 'bob@tutorhub.dev', start: [4, 12, 0], end: [4, 13, 0] },
+  ] as const;
+
+  const bookingData = [
+    {
+      studentEmail: 'charlie@tutorhub.dev',
+      tutorEmail: 'alice@tutorhub.dev',
+      subjectName: 'Python Basics',
+      startTime: at(now, 2, 14),
+      endTime: at(now, 2, 15),
+      durationHours: 1,
+      hourlyPriceSnapshot: 400,
+      notes: 'Loops and list comprehensions, please.',
+    },
+    {
+      studentEmail: 'charlie@tutorhub.dev',
+      tutorEmail: 'bob@tutorhub.dev',
+      subjectName: 'Calculus I',
+      startTime: at(now, 4, 10),
+      endTime: at(now, 4, 12),
+      durationHours: 2,
+      hourlyPriceSnapshot: 300,
+      notes: 'Limits and derivatives before the midterm.',
+    },
+  ];
+
   // 1. Create or update accounts (admin only when SEED_DEMO_DATA=false).
   const accountsToSeed = seedDemoData
     ? seedAccounts
@@ -244,16 +277,6 @@ async function main() {
     }
 
     // 5. Create demo availabilities.
-    const availabilityData = [
-      { email: 'alice@tutorhub.dev', start: [1, 9, 30], end: [1, 12, 30] },
-      { email: 'alice@tutorhub.dev', start: [2, 13, 0], end: [2, 14, 0] },
-      { email: 'alice@tutorhub.dev', start: [2, 15, 0], end: [2, 17, 0] },
-      { email: 'bob@tutorhub.dev', start: [1, 10, 0], end: [1, 12, 0] },
-      { email: 'bob@tutorhub.dev', start: [2, 13, 30], end: [2, 16, 30] },
-      { email: 'bob@tutorhub.dev', start: [4, 9, 0], end: [4, 10, 0] },
-      { email: 'bob@tutorhub.dev', start: [4, 12, 0], end: [4, 13, 0] },
-    ] as const;
-
     for (const item of availabilityData) {
       const tutorId = userIds.get(item.email);
 
@@ -284,29 +307,6 @@ async function main() {
     }
 
     // 6. Create demo bookings.
-    const bookingData = [
-      {
-        studentEmail: 'charlie@tutorhub.dev',
-        tutorEmail: 'alice@tutorhub.dev',
-        subjectName: 'Python Basics',
-        startTime: at(now, 2, 14),
-        endTime: at(now, 2, 15),
-        durationHours: 1,
-        hourlyPriceSnapshot: 400,
-        notes: 'Loops and list comprehensions, please.',
-      },
-      {
-        studentEmail: 'charlie@tutorhub.dev',
-        tutorEmail: 'bob@tutorhub.dev',
-        subjectName: 'Calculus I',
-        startTime: at(now, 4, 10),
-        endTime: at(now, 4, 12),
-        durationHours: 2,
-        hourlyPriceSnapshot: 300,
-        notes: 'Limits and derivatives before the midterm.',
-      },
-    ];
-
     for (const item of bookingData) {
       const studentId = userIds.get(item.studentEmail);
       const tutorId = userIds.get(item.tutorEmail);
