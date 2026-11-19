@@ -156,6 +156,7 @@ model BookingAttachment {
   mimeType     String
   sizeBytes    Int
   storageKey   String   @unique
+  fileData     Bytes?
 
   booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   uploadedBy User    @relation("UploadedAttachments", fields: [uploadedById], references: [id])

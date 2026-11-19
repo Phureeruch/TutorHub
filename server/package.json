@@ -5,11 +5,14 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "prisma:generate": "prisma generate",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "db:migrate": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "test": "tsx --test ./tests/*.test.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "test": "tsx --test ./tests/*.test.ts",
+    "test:unit": "tsx --test ./tests/booking-overlap.test.ts ./tests/price-calculation.test.ts ./tests/time.validation.test.ts"
   },
   "keywords": [],
   "author": "",
