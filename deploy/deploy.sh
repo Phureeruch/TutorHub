@@ -108,9 +108,11 @@ IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}:l
 SECRET_DB_URL="tutorhub-database-url"
 SECRET_ADMIN_PASS="tutorhub-admin-password"
 SECRET_DEMO_PASS="tutorhub-demo-password"
+SECRET_JWT="tutorhub-jwt-secret"
 
 GENERATED_ADMIN_PASSWORD=""
 GENERATED_DEMO_PASSWORD=""
+GENERATED_JWT_SECRET=""
 
 echo "=================================================================="
 echo "TutorHub Cloud Run Deployment"
@@ -239,7 +241,48 @@ else
 fi
 
 # ==============================================================================
-# 8. Optional Demo Password in Secret Manager when --demo is passed
+# 8. Create JWT_SECRET in Secret Manager (only if secret does not exist yet)
+# ==============================================================================
+if [ "$DRY_RUN" = "1" ]; then
+  run_cmd gcloud secrets describe "$SECRET_JWT" --project "$PROJECT_ID"
+  run_cmd gcloud secrets create "$SECRET_JWT" \
+    --replication-policy="automatic" \
+    --labels="app=tutorhub,managed-by=tutorhub-deploy" \
+    --project "$PROJECT_ID"
+  run_cmd gcloud secrets versions add "$SECRET_JWT" --data-file=- --project "$PROJECT_ID"
+else
+  JWT_DESCRIBE_OUTPUT=""
+  if ! JWT_DESCRIBE_OUTPUT="$(gcloud secrets describe "$SECRET_JWT" --project "$PROJECT_ID" --format="value(labels.app,labels.managed-by)" 2>&1)"; then
+    if echo "$JWT_DESCRIBE_OUTPUT" | grep -Eq 'ERROR: \(gcloud\.secrets\.describe\) NOT_FOUND:'; then
+      GENERATED_JWT_SECRET="$(openssl rand -hex 32)"
+      if [ -z "$GENERATED_JWT_SECRET" ]; then
+        echo "ERROR: Failed to generate random JWT secret." >&2
+        exit 1
+      fi
+      run_cmd gcloud secrets create "$SECRET_JWT" \
+        --replication-policy="automatic" \
+        --labels="app=tutorhub,managed-by=tutorhub-deploy" \
+        --project "$PROJECT_ID"
+      printf "%s" "$GENERATED_JWT_SECRET" | gcloud secrets versions add "$SECRET_JWT" --data-file=- --project "$PROJECT_ID"
+    else
+      echo "ERROR: Failed to retrieve metadata for secret '${SECRET_JWT}' in project '${PROJECT_ID}':" >&2
+      echo "$JWT_DESCRIBE_OUTPUT" >&2
+      exit 1
+    fi
+  else
+    JWT_DESCRIBE_OUTPUT="${JWT_DESCRIBE_OUTPUT%$'\r'}"
+    APP_LABEL=""
+    MANAGED_BY_LABEL=""
+    IFS=$'\t' read -r APP_LABEL MANAGED_BY_LABEL <<< "$JWT_DESCRIBE_OUTPUT"
+    if [ "$APP_LABEL" != "tutorhub" ] || [ "$MANAGED_BY_LABEL" != "tutorhub-deploy" ]; then
+      echo "ERROR: Secret '${SECRET_JWT}' already exists in project '${PROJECT_ID}' but does not have expected ownership labels (expected app=tutorhub, managed-by=tutorhub-deploy; found app='${APP_LABEL}', managed-by='${MANAGED_BY_LABEL}'). Aborting deployment to prevent overwriting or using an unmanaged secret." >&2
+      exit 1
+    fi
+  fi
+fi
+
+# ==============================================================================
+# 9. Optional Demo Password in Secret Manager when --demo is passed
 # ==============================================================================
 JOB_SECRETS="DATABASE_URL=${SECRET_DB_URL}:latest,ADMIN_PASSWORD=${SECRET_ADMIN_PASS}:latest"
 if [ "$SEED_DEMO_DATA" = "true" ]; then
@@ -260,7 +303,7 @@ fi
 # ------------------------------------------------------------------------------
 # Secret access (per secret, NOT project-wide)
 # ------------------------------------------------------------------------------
-RUNTIME_SECRETS=("$SECRET_DB_URL" "$SECRET_ADMIN_PASS")
+RUNTIME_SECRETS=("$SECRET_DB_URL" "$SECRET_ADMIN_PASS" "$SECRET_JWT")
 if [ "$SEED_DEMO_DATA" = "true" ]; then
   RUNTIME_SECRETS+=("$SECRET_DEMO_PASS")
 fi
@@ -272,14 +315,14 @@ for secret in "${RUNTIME_SECRETS[@]}"; do
 done
 
 # ==============================================================================
-# 9. Build & Push Unified Container Image via Cloud Build
+# 10. Build & Push Unified Container Image via Cloud Build
 # ==============================================================================
 run_cmd gcloud builds submit \
   --tag "$IMAGE_URI" \
   --project "$PROJECT_ID"
 
 # ==============================================================================
-# 10. Create/Update & Execute Cloud Run Job for Migration + Non-destructive Seed
+# 11. Create/Update & Execute Cloud Run Job for Migration + Non-destructive Seed
 # ==============================================================================
 run_cmd gcloud run jobs deploy "$MIGRATE_JOB_NAME" \
   --image "$IMAGE_URI" \
@@ -305,7 +348,7 @@ if ! run_cmd gcloud run jobs execute "$MIGRATE_JOB_NAME" \
 fi
 
 # ==============================================================================
-# 11. Deploy Cloud Run Service
+# 12. Deploy Cloud Run Service
 # ==============================================================================
 run_cmd gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE_URI" \
@@ -314,7 +357,7 @@ run_cmd gcloud run deploy "$SERVICE_NAME" \
   --allow-unauthenticated \
   --service-account "$SA_EMAIL" \
   --add-cloudsql-instances "$SQL_CONN_NAME" \
-  --set-secrets "DATABASE_URL=${SECRET_DB_URL}:latest" \
+  --set-secrets "DATABASE_URL=${SECRET_DB_URL}:latest,JWT_SECRET=${SECRET_JWT}:latest" \
   --set-env-vars "NODE_ENV=production,TZ=Asia/Bangkok" \
   --min-instances 0 \
   --max-instances 3 \
@@ -340,6 +383,7 @@ printf '%s\n' "Health Check   : ${SERVICE_URL}/api/health"
 printf '%s\n' "Readiness Check: ${SERVICE_URL}/api/ready"
 printf '%s\n' "Admin Email    : admin@tutorhub.dev"
 printf '%s\n' "Admin Password : Stored in Secret Manager: ${SECRET_ADMIN_PASS} (not printed)."
+printf '%s\n' "JWT Secret     : Stored in Secret Manager: ${SECRET_JWT} (not printed)."
 if [ "$SEED_DEMO_DATA" = "true" ]; then
   printf '%s\n' "Demo Password  : Stored in Secret Manager: ${SECRET_DEMO_PASS} (not printed)."
 fi

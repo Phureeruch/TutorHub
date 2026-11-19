@@ -20,6 +20,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_SCRIPT="${SCRIPT_DIR}/../deploy.sh"
+TEARDOWN_SCRIPT="${SCRIPT_DIR}/../teardown.sh"
 export TEST_STATE_DIR
 TEST_STATE_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_STATE_DIR"' EXIT
@@ -73,6 +74,98 @@ if [ "${1:-} ${2:-} ${3:-}" = 'sql users list' ]; then
   fi
   exit 0
 fi
+if [ "${1:-} ${2:-}" = 'secrets describe' ]; then
+  secret="${3:-}"
+  if [ "$secret" = 'tutorhub-jwt-secret' ]; then
+    if [ -n "${TEARDOWN_JWT_STATE:-}" ]; then
+      case "$TEARDOWN_JWT_STATE" in
+        missing)
+          echo "ERROR: (gcloud.secrets.describe) NOT_FOUND: Resource '${secret}' was not found." >&2
+          exit 1 ;;
+        describe_error)
+          echo "ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Permission 'secretmanager.secrets.get' denied on resource '${secret}'." >&2
+          exit 1 ;;
+        unrelated_not_found)
+          echo "ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Service account not found in project." >&2
+          exit 1 ;;
+        no_labels)
+          for arg in "$@"; do
+            case "$arg" in
+              --format=*) printf '\n'; exit 0 ;;
+            esac
+          done
+          exit 0 ;;
+        other_labels)
+          for arg in "$@"; do
+            case "$arg" in
+              --format=*labels.app,labels.managed-by*|--format=*labels.app*labels.managed-by*)
+                printf '%s\t%s\n' "other-service" "manual"
+                exit 0 ;;
+              --format=*labels.app*) echo "other-service"; exit 0 ;;
+              --format=*labels.managed-by*) echo "manual"; exit 0 ;;
+              --format=*) printf '\n'; exit 0 ;;
+            esac
+          done
+          exit 0 ;;
+        owned)
+          for arg in "$@"; do
+            case "$arg" in
+              --format=*labels.app,labels.managed-by*|--format=*labels.app*labels.managed-by*)
+                printf '%s\t%s\n' "tutorhub" "tutorhub-deploy"
+                exit 0 ;;
+              --format=*labels.app*) echo "tutorhub"; exit 0 ;;
+              --format=*labels.managed-by*) echo "tutorhub-deploy"; exit 0 ;;
+              --format=*) printf '\n'; exit 0 ;;
+            esac
+          done
+          exit 0 ;;
+      esac
+    fi
+
+    case "${STUB_MODE:-}" in
+      existing_unlabeled)
+        for arg in "$@"; do
+          case "$arg" in
+            --format=*) printf '\n'; exit 0 ;;
+          esac
+        done
+        exit 0 ;;
+      existing_wrong_labels)
+        for arg in "$@"; do
+          case "$arg" in
+            --format=*labels.app,labels.managed-by*|--format=*labels.app*labels.managed-by*)
+              printf '%s\t%s\n' "foreign-app" "manual"
+              exit 0 ;;
+            --format=*labels.app*) echo "foreign-app"; exit 0 ;;
+            --format=*labels.managed-by*) echo "manual"; exit 0 ;;
+            --format=*) printf '\n'; exit 0 ;;
+          esac
+        done
+        exit 0 ;;
+      describe_error)
+        echo "ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Permission 'secretmanager.secrets.get' denied on resource '${secret}'." >&2
+        exit 1 ;;
+      unrelated_not_found)
+        echo "ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Service account not found in project." >&2
+        exit 1 ;;
+      first_run)
+        echo "ERROR: (gcloud.secrets.describe) NOT_FOUND: Resource '${secret}' was not found." >&2
+        exit 1 ;;
+      *)
+        for arg in "$@"; do
+          case "$arg" in
+            --format=*labels.app,labels.managed-by*|--format=*labels.app*labels.managed-by*)
+              printf '%s\t%s\n' "tutorhub" "tutorhub-deploy"
+              exit 0 ;;
+            --format=*labels.app*) echo "tutorhub"; exit 0 ;;
+            --format=*labels.managed-by*) echo "tutorhub-deploy"; exit 0 ;;
+            --format=*) printf '\n'; exit 0 ;;
+          esac
+        done
+        exit 0 ;;
+    esac
+  fi
+fi
 for word in "$@"; do
   if [ "$word" = describe ]; then
     case "$STUB_MODE" in
@@ -100,7 +193,7 @@ for MODE in first_run rerun partial job-fail demo; do
   args=()
   if [ "$MODE" = demo ]; then args+=(--demo); fi
   result=0
-  bash "$DEPLOY_SCRIPT" "${args[@]}" > "$TEST_STATE_DIR/output" 2>&1 || result=$?
+  bash "$DEPLOY_SCRIPT" ${args[@]+"${args[@]}"} > "$TEST_STATE_DIR/output" 2>&1 || result=$?
   expected=0
   if [ "$MODE" = job-fail ]; then expected=1; fi
   if [ "$result" -ne "$expected" ]; then
@@ -113,11 +206,12 @@ for MODE in first_run rerun partial job-fail demo; do
     fi
   else
     grep -q '^run deploy ' "$GCLOUD_LOG"
+    grep '^run deploy ' "$GCLOUD_LOG" | grep -q -- '--set-secrets DATABASE_URL=tutorhub-database-url:latest,JWT_SECRET=tutorhub-jwt-secret:latest'
   fi
   if grep -q '^projects add-iam-policy-binding .*roles/secretmanager.secretAccessor' "$GCLOUD_LOG"; then
     echo 'FAIL: runtime has project-wide secret access'; exit 1
   fi
-  for secret in tutorhub-database-url tutorhub-admin-password; do
+  for secret in tutorhub-database-url tutorhub-admin-password tutorhub-jwt-secret; do
     grep -q "^secrets add-iam-policy-binding $secret .*roles/secretmanager.secretAccessor" "$GCLOUD_LOG"
   done
   if [ "$MODE" = demo ]; then
@@ -128,11 +222,14 @@ for MODE in first_run rerun partial job-fail demo; do
   case "$MODE" in
     first_run)
       grep -q -- '--edition=enterprise' "$GCLOUD_LOG"
-      grep -q '^sql users create ' "$GCLOUD_LOG" ;;
+      grep -q '^sql users create ' "$GCLOUD_LOG"
+      grep -q '^secrets create tutorhub-jwt-secret ' "$GCLOUD_LOG"
+      grep -q '^secrets create tutorhub-jwt-secret .*--labels=app=tutorhub,managed-by=tutorhub-deploy' "$GCLOUD_LOG"
+      grep -q '^secrets versions add tutorhub-jwt-secret ' "$GCLOUD_LOG" ;;
     partial) grep -q '^sql users set-password ' "$GCLOUD_LOG" ;;
     rerun)
-      if grep -Eq '^(secrets create|sql users (create|set-password)) ' "$GCLOUD_LOG"; then
-        echo 'FAIL: rerun replaced existing credentials'; exit 1
+      if grep -Eq '^(secrets (create|versions add)|sql users (create|set-password)) ' "$GCLOUD_LOG"; then
+        echo 'FAIL: rerun replaced existing credentials or added secret versions'; exit 1
       fi ;;
   esac
   if [ -f "$TEST_STATE_DIR/sql-pass" ]; then
@@ -155,6 +252,44 @@ for MODE in first_run rerun partial job-fail demo; do
   done
   echo "PASS: $MODE (exit, migration gate, credential handling, secret redaction)"
 done
+
+# --- Deploy JWT secret ownership validation tests -----------------------------
+for D_FAIL_MODE in existing_unlabeled existing_wrong_labels describe_error unrelated_not_found; do
+  export STUB_MODE="$D_FAIL_MODE"
+  export GCLOUD_LOG="$TEST_STATE_DIR/gcloud-deploy-fail-$D_FAIL_MODE.log"
+  output_file="$TEST_STATE_DIR/output-deploy-fail-$D_FAIL_MODE"
+
+  result=0
+  bash "$DEPLOY_SCRIPT" > "$output_file" 2>&1 || result=$?
+  if [ "$result" -eq 0 ]; then
+    echo "FAIL deploy-$D_FAIL_MODE: expected non-zero exit code, got 0"
+    exit 1
+  fi
+
+  if grep -q '^secrets create tutorhub-jwt-secret ' "$GCLOUD_LOG"; then
+    echo "FAIL deploy-$D_FAIL_MODE: unexpectedly attempted to create secret"
+    exit 1
+  fi
+  if grep -q '^run deploy ' "$GCLOUD_LOG"; then
+    echo "FAIL deploy-$D_FAIL_MODE: service deployed after ownership check failure"
+    exit 1
+  fi
+
+  case "$D_FAIL_MODE" in
+    existing_unlabeled|existing_wrong_labels)
+      if ! grep -q 'does not have expected ownership labels' "$output_file"; then
+        echo "FAIL deploy-$D_FAIL_MODE: missing ownership mismatch error message"
+        exit 1
+      fi ;;
+    describe_error|unrelated_not_found)
+      if ! grep -q 'Failed to retrieve metadata for secret' "$output_file"; then
+        echo "FAIL deploy-$D_FAIL_MODE: missing metadata retrieval failure error message"
+        exit 1
+      fi ;;
+  esac
+  echo "PASS: deploy-$D_FAIL_MODE (deployment safely aborted before creation/deploy)"
+done
+
 # --- Dry run must not call gcloud at all ------------------------------------------
 export GCLOUD_LOG="$TEST_STATE_DIR/dry-run-calls"
 DRY_RUN=1 bash "$DEPLOY_SCRIPT" --demo > "$TEST_STATE_DIR/dry-run-output"
@@ -162,3 +297,63 @@ if [ -f "$GCLOUD_LOG" ]; then
   echo 'FAIL: dry run called gcloud'; exit 1
 fi
 echo 'PASS: dry run makes no gcloud calls'
+
+# --- Teardown dry run must not call gcloud ---------------------------------------
+export GCLOUD_LOG="$TEST_STATE_DIR/teardown-dry-run-calls"
+DRY_RUN=1 bash "$TEARDOWN_SCRIPT" > "$TEST_STATE_DIR/teardown-dry-run-output"
+if [ -f "$GCLOUD_LOG" ]; then
+  echo 'FAIL: teardown dry run called gcloud'; exit 1
+fi
+echo 'PASS: teardown dry run makes no gcloud calls'
+
+# --- Teardown ownership safety tests -------------------------------------------
+for T_MODE in owned no_labels other_labels missing describe_error unrelated_not_found; do
+  export TEARDOWN_JWT_STATE="$T_MODE"
+  export STUB_MODE="teardown"
+  export GCLOUD_LOG="$TEST_STATE_DIR/gcloud-teardown-$T_MODE.log"
+  output_file="$TEST_STATE_DIR/output-teardown-$T_MODE"
+
+  result=0
+  printf '%s\n' "$PROJECT_ID" | bash "$TEARDOWN_SCRIPT" > "$output_file" 2>&1 || result=$?
+  if [ "$result" -ne 0 ]; then
+    echo "FAIL teardown-$T_MODE: unexpected exit $result (wanted 0)"
+    cat "$output_file"
+    exit 1
+  fi
+
+  case "$T_MODE" in
+    owned)
+      if ! grep -q '^secrets delete tutorhub-jwt-secret ' "$GCLOUD_LOG"; then
+        echo 'FAIL: owned JWT secret was not deleted in teardown'; exit 1
+      fi ;;
+    no_labels)
+      if grep -q '^secrets delete tutorhub-jwt-secret ' "$GCLOUD_LOG"; then
+        echo 'FAIL: unlabeled JWT secret was unexpectedly deleted'; exit 1
+      fi
+      if ! grep -q 'does not have matching ownership labels' "$output_file"; then
+        echo 'FAIL: missing warning for unlabeled secret'; exit 1
+      fi ;;
+    other_labels)
+      if grep -q '^secrets delete tutorhub-jwt-secret ' "$GCLOUD_LOG"; then
+        echo 'FAIL: foreign-labeled JWT secret was unexpectedly deleted'; exit 1
+      fi
+      if ! grep -q 'does not have matching ownership labels' "$output_file"; then
+        echo 'FAIL: missing warning for foreign-labeled secret'; exit 1
+      fi ;;
+    missing)
+      if grep -q '^secrets delete tutorhub-jwt-secret ' "$GCLOUD_LOG"; then
+        echo 'FAIL: missing JWT secret was deleted'; exit 1
+      fi
+      if ! grep -q 'does not exist' "$output_file"; then
+        echo 'FAIL: missing notice for nonexistent secret'; exit 1
+      fi ;;
+    describe_error|unrelated_not_found)
+      if grep -q '^secrets delete tutorhub-jwt-secret ' "$GCLOUD_LOG"; then
+        echo "FAIL teardown-$T_MODE: JWT secret was deleted despite describe error"; exit 1
+      fi
+      if ! grep -q 'Failed to retrieve metadata for secret' "$output_file"; then
+        echo "FAIL teardown-$T_MODE: missing warning for describe error"; exit 1
+      fi ;;
+  esac
+  echo "PASS: teardown-$T_MODE (ownership verification, safe handling, warning)"
+done
