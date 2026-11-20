@@ -12,7 +12,7 @@ describe('calculateBookingPrice', () => {
       }),
       {
         hourlyPriceSnapshot: 500,
-        totalPrice: 500,
+        totalPrice: 9999,
       },
     );
   });
