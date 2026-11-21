@@ -156,21 +156,21 @@ npm --prefix server run seed
 
 ## 4. Google Cloud Platform Configuration
 
-> [!NOTE]
-> Values marked with **TODO** are provisioned during GCP project setup (Episodes 1, 5, 6) and must be filled in with your team's assigned identifiers.
-
 | Resource | Value / Identifier | Notes |
 |---|---|---|
-| **GCP Project ID** | `TODO: YOUR_PROJECT_ID` | Formed during Episode 1 (e.g., `cpe334-sec1-teamXX`) |
+| **GCP Project ID** | `cpe334-tutorhub` | Active project for Lab 5 through Final Project |
+| **GCP Project Number** | `382215818465` | Used in Workload Identity Federation provider path |
 | **GCP Region** | `asia-southeast1` | Singapore region (low latency to Thailand) |
 | **Artifact Registry** | `tutorhub` | Docker container registry repository |
-| **Container Image URI** | `asia-southeast1-docker.pkg.dev/TODO_PROJECT_ID/tutorhub/tutorhub` | Tagged with commit SHA |
+| **Container Image URI** | `asia-southeast1-docker.pkg.dev/cpe334-tutorhub/tutorhub/tutorhub` | Tagged with 40-character Git commit SHA (`IMAGE_TAG`) |
 | **Cloud SQL Instance** | `tutorhub-pg` | `db-f1-micro`, PostgreSQL 16, enterprise edition, auto-increase OFF |
 | **Cloud SQL Database** | `tutorhub` | Primary application database |
-| **Runtime Service Account** | `tutorhub-runner@TODO_PROJECT_ID.iam.gserviceaccount.com` | Least privilege: `roles/cloudsql.client` + secret accessor |
-| **Deployer Service Account** | `tutorhub-deployer@TODO_PROJECT_ID.iam.gserviceaccount.com` | Used by GitHub Actions WIF |
-| **Cloud Run Service** | `tutorhub` | Port 3000, 1 CPU, 512MiB RAM, 0 to 3 instances |
+| **Runtime Service Account** | `tutorhub-runner@cpe334-tutorhub.iam.gserviceaccount.com` | Least privilege: `roles/cloudsql.client` + secret accessor |
+| **Deployer Service Account** | `tutorhub-deployers@cpe334-tutorhub.iam.gserviceaccount.com` | Used by GitHub Actions WIF (`roles/run.developer`, repo writer) |
+| **Cloud Run Service** | `tutorhub` | `https://tutorhub-382215818465.asia-southeast1.run.app` (Port 3000, 1 CPU, 512MiB RAM, 0 to 3 instances) |
 | **Cloud Run Migration Job** | `tutorhub-migrate` | Runs `npx prisma migrate deploy && npm run seed` |
+| **Secret Manager Secrets** | `tutorhub-database-url`, `tutorhub-admin-password`, `tutorhub-demo-password`, `tutorhub-jwt-secret` | Runtime secrets injected via Cloud Run secret references |
+| **Workload Identity Pool** | `github-actions` (Provider: `github-main`) | Keyless GitHub Actions deployment authentication |
 
 ---
 
