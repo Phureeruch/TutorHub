@@ -438,4 +438,19 @@ describe('auth view layout and validation (F-01, UI/UX)', () => {
     expect(pwd.getAttribute('aria-invalid')).toBe('true')
     expect(document.activeElement).toBe(pwd)
   })
+
+  it('marks the full name input aria-invalid and focuses it when registering with a blank name (FR-02, #46)', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/register', null)
+    const fullName = await screen.findByLabelText('Full name')
+    await user.type(fullName, '   ')
+    await user.type(screen.getByLabelText('Email'), 'blank-name@tutorhub.dev')
+    await user.type(screen.getByLabelText('Password'), 'password123')
+    await user.click(screen.getByRole('button', { name: 'Create student account' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('Enter your name.')
+    expect(fullName.getAttribute('aria-invalid')).toBe('true')
+    expect(document.activeElement).toBe(fullName)
+  })
 })

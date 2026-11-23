@@ -162,6 +162,7 @@ function RegisterForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     // Checked in form order so focus lands on the first problem.
+    if (!name.trim()) return fail({ field: 'name', message: 'Enter your name.' })
     if (!EMAIL_PATTERN.test(email.trim())) return fail({ field: 'email', message: 'Enter a valid email address.' })
     if (password.length < MIN_PASSWORD_LENGTH) {
       return fail({ field: 'password', message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` })
