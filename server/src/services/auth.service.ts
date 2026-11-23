@@ -84,10 +84,6 @@ export async function registerStudent(input: {
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
 
-  if (!name) {
-    throw new AuthError('Enter your name.', 400);
-  }
-
   if (!EMAIL_PATTERN.test(email)) {
     throw new AuthError('Enter a valid email address.', 400);
   }
