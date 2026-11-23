@@ -2,7 +2,7 @@
 
 **Version:** 1.0 (Pre-Implementation Baseline)  
 **Date:** 2026-11-23  
-**Authors:** Korapin Manochokecharoen, Phureeruch Satithangkul  
+**Authors:** Korapin Manoprasertkoon (`67070503458`), Phureeruch Satithangkul (`67070503471`)  
 **Course:** CPE 334 — Project Deliverable 2 (Part C) & Final Delivery (13 December 2026)  
 **Deliverable 2 Target:** Complete contracts for all remaining Sprint 3 features (`F-16`–`F-19`) and implement + verify **F-16 (Tutor Lesson Completion & Homework Notes)** in the integrated Deliverable 2 candidate (`v2.1.0-d2-rc`) prior to 29 November 2026.
 

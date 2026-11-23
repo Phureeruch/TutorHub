@@ -2,7 +2,7 @@
 
 **Version:** 1.0 (Pre-Implementation Baseline)  
 **Date:** 2026-11-23  
-**Authors:** Korapin Manochokecharoen, Phureeruch Satithangkul  
+**Authors:** Korapin Manoprasertkoon (`67070503458`), Phureeruch Satithangkul (`67070503471`)  
 **Course:** CPE 334 — Project Deliverable 2 (Part B)  
 **Baseline Preceded:** Committed on `docs/d2-contracts-and-register` prior to Sprint 2 feature implementation PRs (`F-09`–`F-15`).
 

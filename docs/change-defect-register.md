@@ -1,8 +1,8 @@
 # TutorHub — Change, Defect & Baseline Revision Register
 
-**Version:** 1.0 (Sprint 2 Start Baseline)  
-**Date:** 2026-11-23  
-**Authors:** Korapin Manochokecharoen, Phureeruch Satithangkul  
+**Version:** 1.1 (Updated with Lab 6 UAT & Special Exercise #46)  
+**Date:** 2026-11-24  
+**Authors:** Korapin Manoprasertkoon (`67070503458`), Phureeruch Satithangkul (`67070503471`)  
 **Course:** CPE 334 — Project Deliverable 2 (Part A)
 
 ---
@@ -41,7 +41,7 @@ All revisions below are retained in the current product baseline without rewriti
 
 ## 3. Change & Defect Register (Labs 5–7 Deployment, UAT & Maintenance)
 
-> **Note for Deliverable 2 Finalization:** All deployment, CI, and maintenance items verified in the repository are logged below. Append any additional external cross-team UAT ticket IDs from Labs 6–7 in rows `UAT-xx` as they are triaged and re-tested prior to `v2.1.0-d2-rc`.
+> **Note for Deliverable 2 Finalization:** All Lab 5 deployment/CI items, Lab 6 independent UAT results (QuickOrder partner team), and Sprint 2 readiness audit findings are logged below. Update `UAT-L6-02` with the final `main` merge SHA, Cloud Run revision, and QuickOrder re-test date once PR for Issue `#46` merges, and append any Lab 7 maintenance findings prior to `v2.1.0-d2-rc`.
 
 | ID | Source | Affected Req / Feature | Finding / Issue Summary | Accepted Decision | Status | Fix / Change Release | Re-test Outcome |
 |---|---|---|---|---|---|---|---|
@@ -55,7 +55,8 @@ All revisions below are retained in the current product baseline without rewriti
 | **DEF-06** | Sprint 2 Readiness Audit (Docs Drift) | `NFR-03`, `NFR-05` / `F-14`, Part D | `README.md` still documents Sprint 1 DB port `5433` and disk `UPLOAD_DIR` instead of Lab 5 Docker Compose port `5434` and PostgreSQL `BYTEA`; `docs/system-sds.md` still cites React 18 and omits `BookingAttachment.fileData`. | Reconcile `README.md` (Issue #5) and `docs/system-sds.md` (Issue #7) with actual Docker/Cloud Run configuration and Prisma schema. | **Remaining** | Planned — Issues #5 & #7 (`v2.0.0-sprint2` / `v2.1.0-d2-rc`) | Pending verification in Issues #5 & #7. |
 | **DEF-07** | Sprint 2 Readiness Audit (Seed Data) | `FR-02`, `BR-02` / `F-08`, `F-13` | `server/prisma/seed.ts` seeds only pre-approved tutors (`Alice`, `Bob`), leaving no pending tutor account for testing or demonstrating Admin approval (`F-13`). | Add an idempotent unapproved sample tutor account (e.g., `evan.pending@tutorhub.dev`, `isApproved: false`) to demo seed data. | **Remaining** | Planned — Issue #4 (`v2.0.0-sprint2`) | Pending verification in Issue #4. |
 | **DEF-08** | Sprint 2 Cross-Feature Audit | `FR-11`, `FR-12`, `BR-11`, `BR-15` / `F-07`, `F-10` | `getAdminSummary()` (`server/src/services/admin.service.ts`) excludes all `CANCELLED` bookings from `mockRevenue`, which would under-report retained revenue when a student cancels with a 50% or 0% refund. | Update `mockRevenue` aggregation to compute retained payments (`SUM(totalPrice - COALESCE(refundAmount, 0))`) across all bookings and align `client/src/components/admin/adminSummary.ts`. | **Remaining** | Planned — Issue #5 (`v2.0.0-sprint2`) | Pending cross-feature regression test in Issue #5 & Issue #7. |
-| **UAT-01** | Lab 6 / Lab 7 UAT *(placeholder)* | *TBD — populate if Lab 6/7 external UAT logged additional defects* | *Record any cross-team UAT or maintenance findings here prior to Deliverable 2 PDF freeze; delete row if no external findings were raised.* | *TBD* | **Remaining** | *TBD* | *Pending Lab 6/7 UAT review.* |
+| **UAT-L6-01** | Lab 6 Independent UAT (QuickOrder — Ivan Luwongsuwat & Panyakorn Lohaviboonsap, 2026-11-23) | `F-01`–`F-08` (Sprint 1 Scope) | Independent execution of Sprint 1 UAT cases (`UAT-S1-01`–`UAT-S1-05`) on live Cloud Run (`883fd17` / `3ef0898` docs-only equivalent) passed all 5 cases with **0 genuine defects**. | Record honest zero-defect initial UAT acceptance; execute Instructor's standardized Lab 6 Special Exercise on `Lab5-staging` (`f26a333`) to verify defect-fix workflow without breaking live `main`. | **Resolved** | Initial Sprint 1 UAT accepted on `883fd17` / `3ef0898` | All 5 UAT cases (`UAT-S1-01`–`UAT-S1-05`) passed on Cloud Run. |
+| **UAT-L6-02** *(Issue `#46`)* | Lab 6 Special Exercise UAT (QuickOrder) | `FR-02` / `F-01` (Student Registration) | Blank/whitespace-only full name was accepted on student registration on controlled staging build `Lab5-staging` (`f26a333`), allowing nameless student accounts. | Accepted Major defect (controlled exercise). Add RED reproducing tests (`api.integration.test.ts`, `App.test.tsx`), restore required full-name validation (`auth.service.ts`, `AuthView.tsx`), merge via `Lab5-staging` → `main` & sync into `sprint-2-staging`, redeploy, and obtain QuickOrder re-test sign-off. | **Remaining** *(Fix ready on branch)* | `fix/lab6-register-name-validation` (RED `48902f1`, GREEN `c7875d3`; pending merge to `Lab5-staging` → `main`) | Automated RED → GREEN backend & frontend regression tests pass locally; pending CI/CD rollout and QuickOrder live re-test. |
 
 ---
 
@@ -64,3 +65,4 @@ All revisions below are retained in the current product baseline without rewriti
 | Version | Date | Author(s) | Summary |
 |---|---|---|---|
 | 1.0 | 2026-11-23 | Korapin, Phureeruch | Initial Sprint 2 baseline register documenting Sprint 1 tag (`v1.0.0-sprint1`), approved revisions (`BRV-01`–`BRV-04`), resolved Lab 5 findings (`CHG-01`, `DEF-01`–`DEF-04`), and open Sprint 2 maintenance/readiness items (`CHG-02`, `DEF-05`–`DEF-08`). |
+| 1.1 | 2026-11-24 | Korapin, Phureeruch | Replaced `UAT-01` placeholder with real Lab 6 independent UAT outcomes (`UAT-L6-01`, `UAT-L6-02` / Issue `#46` commits `f26a333`, `48902f1`, `c7875d3`) and aligned author names/IDs. |
