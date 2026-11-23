@@ -215,6 +215,24 @@ test('auth register returns token + user and allows immediate email verification
   assert.equal(meRes.body.user.isEmailVerified, true);
 });
 
+test('rejects student registration when full name is blank (FR-02, #46)', async () => {
+  const email = `blank-name-${randomUUID()}@test.com`;
+  const regRes = await apiJson<{
+    message?: string;
+    userId?: number;
+  }>('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name: '   ', email, password: 'password123' }),
+  });
+
+  if (regRes.body.userId) {
+    userIds.push(regRes.body.userId);
+  }
+
+  assert.equal(regRes.status, 400);
+  assert.equal(regRes.body.message, 'Enter your name.');
+});
+
 test('end-to-end HTTP booking with multipart attachment upload, retrieval, and role isolation', async () => {
   const { user: student, password: studentPwd } = await seedUser('STUDENT', { verified: true });
   const { user: otherStudent, password: otherPwd } = await seedUser('STUDENT', { verified: true });
