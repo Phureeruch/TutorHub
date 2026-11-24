@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError, MIN_PASSWORD_LENGTH } from '../../api/mockApi'
 import { useMockApp } from '../../context/appContext'
 import { Modal } from '../ui/Modal'
+import { PasswordInput } from '../ui/PasswordInput'
 
 interface ResetPasswordModalProps {
   initialEmail: string
@@ -64,10 +65,8 @@ export function ResetPasswordModal({ initialEmail, onClose, onReset }: ResetPass
           <label className="form-label" htmlFor="reset-password">
             New password
           </label>
-          <input
+          <PasswordInput
             id="reset-password"
-            type="password"
-            className="form-control"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             value={password}

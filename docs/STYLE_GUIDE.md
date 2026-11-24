@@ -49,6 +49,7 @@ All colors live in `:root` in `client/src/index.css`. **Never write raw hex or `
 | **Notices / Alerts** | `.th-notice`, `.th-notice-info`, `.th-notice-success`, `.th-notice-warning`, `.th-notice-error` | Always include `role="alert"` (errors) or `role="status"` (confirmations) |
 | **Data Tables & Stats** | `.th-table-wrap` + `table.table.th-table`, `.th-stats` + `.th-stats-accent` | Rounded `20px` container, tabular numbers via `.th-num` |
 | **Modals & Empty States** | `<Modal>` (`.th-modal`), `.th-detail` (`<dl>`), `.th-empty` | Keep existing `Modal` component so focus trap & `Escape` behavior stay intact |
+| **Password Inputs** | `<PasswordInput>` (`.th-password-field`, `.th-password-toggle`) | Reusable eye-icon visibility toggle with `aria-label` & `aria-pressed` |
 
 ---
 
