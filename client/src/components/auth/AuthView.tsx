@@ -259,7 +259,7 @@ export function AuthView({ mode }: { mode: 'login' | 'register' }) {
     <main className="th-auth">
       <header className="th-auth-header">
         <h1 className="th-wordmark th-wordmark-lg mb-1">TutorHub</h1>
-        <p className="text-muted-ink small mb-0">School tutoring portal (release 2)</p>
+        <p className="text-muted-ink small mb-0">School tutoring portal</p>
       </header>
 
       <section className="th-auth-card th-surface" aria-label={mode === 'login' ? 'Sign in' : 'Create a student account'}>
