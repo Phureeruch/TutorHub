@@ -4,6 +4,7 @@ import type {
   Availability,
   Booking,
   BookingAttachment,
+  CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
   RegisterRequest,
@@ -205,6 +206,10 @@ export const httpClient = {
     })
   },
 
+  async updateAvailability(_availabilityId: number, _req: CreateAvailabilityRequest): Promise<Availability> {
+    throw new Error('Not implemented: httpClient.updateAvailability')
+  },
+
   async uploadAttachment(file: File | BookingAttachment): Promise<Required<BookingAttachment>> {
     if (file instanceof File) {
       const formData = new FormData()
@@ -267,6 +272,10 @@ export const httpClient = {
 
   async getBookingById(bookingId: number): Promise<Booking> {
     return request<Booking>(`/api/bookings/${bookingId}`)
+  },
+
+  async cancelBooking(_bookingId: number, _reason?: string): Promise<CancelBookingResponse> {
+    throw new Error('Not implemented: httpClient.cancelBooking')
   },
 
   async getAdminSummary(): Promise<AdminSummary> {

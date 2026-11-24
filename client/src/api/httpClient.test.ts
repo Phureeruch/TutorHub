@@ -124,4 +124,39 @@ describe('httpClient', () => {
     const [url] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/availability?subjectId=2&tutorId=1&date=2026-11-14&level=UNDERGRADUATE')
   })
+
+  it('sends PATCH /api/bookings/:id/cancel and PUT /api/tutor/availability/:id', async () => {
+    setStoredToken('jwt-token')
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({
+          message: 'Booking cancelled successfully.',
+          refundPercentage: 50,
+          refundAmount: 200,
+          booking: { id: 1, status: 'CANCELLED' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: 5,
+          tutorId: 1,
+          startTime: '2026-11-28T09:00:00.000Z',
+          endTime: '2026-11-28T11:00:00.000Z',
+        }),
+      )
+
+    const cancelRes = await httpClient.cancelBooking(1, 'Change of plans')
+    expect(cancelRes.refundPercentage).toBe(50)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/bookings/1/cancel')
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('PATCH')
+
+    const updateRes = await httpClient.updateAvailability(5, {
+      startTime: '2026-11-28T09:00:00.000Z',
+      endTime: '2026-11-28T11:00:00.000Z',
+    })
+    expect(updateRes.id).toBe(5)
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/tutor/availability/5')
+    expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT')
+  })
 })

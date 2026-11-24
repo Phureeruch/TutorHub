@@ -10,6 +10,7 @@ import type {
   Availability,
   Booking,
   BookingAttachment,
+  CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
   MockDb,
@@ -271,6 +272,16 @@ export function deleteAvailability(db: MockDb, actor: User, availabilityId: numb
   return { db: { ...db, availabilities: db.availabilities.filter((a) => a.id !== availabilityId) }, data: null }
 }
 
+export function updateAvailability(
+  _db: MockDb,
+  _actor: User,
+  _availabilityId: number,
+  _req: CreateAvailabilityRequest,
+  _now: Date,
+): Mutation<Availability> {
+  throw new ApiError(400, 'Not implemented: updateAvailability')
+}
+
 // ---------------------------------------------------------------------------
 // Bookings & mock payment (SDS §4.3)
 // ---------------------------------------------------------------------------
@@ -395,6 +406,16 @@ export function getBookingById(db: MockDb, actor: User, bookingId: number): Book
     (actor.role === 'TUTOR' && booking.tutorId === actor.id)
   if (!allowed) throw new ApiError(403, 'You do not have permission to view this booking.')
   return booking
+}
+
+export function cancelBooking(
+  _db: MockDb,
+  _actor: User,
+  _bookingId: number,
+  _now: Date,
+  _reason?: string,
+): Mutation<CancelBookingResponse> {
+  throw new ApiError(400, 'Not implemented: cancelBooking')
 }
 
 // ---------------------------------------------------------------------------

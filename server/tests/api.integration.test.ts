@@ -381,4 +381,85 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   assert.ok(summaryRes.body.totalBookings >= 1);
   assert.ok(summaryRes.body.verifiedStudents >= 2);
   assert.ok(summaryRes.body.totalStudents >= summaryRes.body.verifiedStudents);
+
+  // Confirmed booking schedule cannot be modified via PUT /api/bookings/:id (BR-10, STS-10.6)
+  const mutateBooking = await apiJson(`/api/bookings/${bookingRes.body.id}`, {
+    method: 'PUT',
+    token: studentToken,
+    body: { durationHours: 2 },
+  });
+  assert.equal(mutateBooking.status, 404);
+
+  // Stranger student cannot cancel someone else's booking (403, STS-10.5)
+  const strangerCancel = await apiJson<{ message: string }>(
+    `/api/bookings/${bookingRes.body.id}/cancel`,
+    {
+      method: 'PATCH',
+      token: otherToken,
+      body: {},
+    },
+  );
+  assert.equal(strangerCancel.status, 403);
+
+  // Student cancels own booking (< 72h and >= 24h away -> 50% refund) and merges availability (STS-10.2, STS-12.2)
+  const cancelRes = await apiJson<{
+    message: string;
+    refundPercentage: number;
+    refundAmount: number;
+    booking: {
+      id: number;
+      status: string;
+      paymentStatus: string;
+      cancelledBy: string;
+      refundPercentage: number;
+      refundAmount: number;
+    };
+  }>(`/api/bookings/${bookingRes.body.id}/cancel`, {
+    method: 'PATCH',
+    token: studentToken,
+    body: { reason: 'Schedule conflict' },
+  });
+  assert.equal(cancelRes.status, 200);
+  assert.equal(cancelRes.body.refundPercentage, 50);
+  assert.equal(cancelRes.body.refundAmount, 225);
+  assert.equal(cancelRes.body.booking.status, 'CANCELLED');
+  assert.equal(cancelRes.body.booking.paymentStatus, 'REFUNDED_PARTIAL');
+  assert.equal(cancelRes.body.booking.cancelledBy, 'STUDENT');
+
+  // Re-cancelling an already-cancelled booking returns 409 (STS-10.4)
+  const cancelAgain = await apiJson<{ message: string }>(
+    `/api/bookings/${bookingRes.body.id}/cancel`,
+    {
+      method: 'PATCH',
+      token: studentToken,
+      body: {},
+    },
+  );
+  assert.equal(cancelAgain.status, 409);
+
+  // Tutor schedule now shows the two slices merged back into 1 continuous availability window (STS-12.2)
+  const mergedSchedule = await apiJson<{
+    availabilities: { id: number; startTime: string; endTime: string }[];
+  }>('/api/tutor/availability', { token: tutorToken });
+  assert.equal(mergedSchedule.status, 200);
+  assert.equal(mergedSchedule.body.availabilities.length, 1);
+
+  // Tutor updates the merged availability window via PUT /api/tutor/availability/:id (STS-12.3)
+  const avId = mergedSchedule.body.availabilities[0]!.id;
+  const shiftedStart = new Date(windowStart.getTime() + 60 * 60 * 1000);
+  const shiftedEnd = new Date(shiftedStart.getTime() + 2 * 60 * 60 * 1000);
+  const updateAvRes = await apiJson<{ id: number; startTime: string; endTime: string }>(
+    `/api/tutor/availability/${avId}`,
+    {
+      method: 'PUT',
+      token: tutorToken,
+      body: {
+        startTime: shiftedStart.toISOString(),
+        endTime: shiftedEnd.toISOString(),
+      },
+    },
+  );
+  assert.equal(updateAvRes.status, 200);
+  assert.equal(new Date(updateAvRes.body.startTime).getTime(), shiftedStart.getTime());
+  assert.equal(new Date(updateAvRes.body.endTime).getTime(), shiftedEnd.getTime());
 });

@@ -470,3 +470,54 @@ describe('auth view layout and validation (F-01, UI/UX)', () => {
     expect(document.activeElement).toBe(fullName)
   })
 })
+
+describe('booking cancellation, 3-tier refund preview, tutor cancellation & availability edit UI (F-10, F-11, F-12, STS-10.7, STS-11.4)', () => {
+  it('shows 50% refund preview when student cancels a booking 24–72h out and restores merged availability', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/student/bookings', SEED.CHARLIE)
+
+    const cancelButtons = await screen.findAllByRole('button', { name: /^Cancel booking #/ })
+    await user.click(cancelButtons[0])
+
+    const dialog = screen.getByRole('dialog', { name: /Cancel booking #1/i })
+    expect(within(dialog).getByText(/50%/i)).toBeTruthy()
+    expect(within(dialog).getByText(/฿200/)).toBeTruthy()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm cancellation' }))
+
+    expect(await screen.findByText('Cancelled')).toBeTruthy()
+    expect(screen.getByText(/Partly refunded/)).toBeTruthy()
+  })
+
+  it('warns tutor that student receives 100% refund and slot remains blocked on tutor cancellation', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/tutor/appointments', SEED.ALICE)
+
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel appointment #1' })
+    await user.click(cancelBtn)
+
+    const dialog = screen.getByRole('dialog', { name: /Cancel appointment #1/i })
+    expect(within(dialog).getByText(/100% refund/i)).toBeTruthy()
+    expect(within(dialog).getByText(/remain blocked/i)).toBeTruthy()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm cancellation' }))
+
+    expect(await screen.findByText('Cancelled')).toBeTruthy()
+    expect(screen.getByText('Refunded')).toBeTruthy()
+  })
+
+  it('lets a tutor edit an existing open availability window', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/tutor/dashboard', SEED.ALICE)
+
+    const editButtons = await screen.findAllByRole('button', { name: /^Edit / })
+    await user.click(editButtons[0])
+
+    const dialog = screen.getByRole('dialog', { name: /Edit open window/i })
+    const lengthSelect = within(dialog).getByLabelText('Length')
+    await user.selectOptions(lengthSelect, '2')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText(/Updated window/i)).toBeTruthy()
+  })
+})

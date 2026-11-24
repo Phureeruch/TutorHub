@@ -181,3 +181,23 @@ export async function getTutorAvailability(tutorId: number) {
     bookings: bookings.map(toBookingDto),
   };
 }
+
+export async function restoreAndMergeAvailability(
+  _tx: Prisma.TransactionClient,
+  _tutorId: number,
+  _startTime: Date,
+  _endTime: Date,
+) {
+  throw new AvailabilityError('Not implemented: restoreAndMergeAvailability', 500);
+}
+
+export async function updateAvailability(
+  _tutorId: number,
+  _availabilityId: number,
+  _input: {
+    startTime: Date;
+    endTime: Date;
+  },
+) {
+  throw new AvailabilityError('Not implemented: updateAvailability', 500);
+}

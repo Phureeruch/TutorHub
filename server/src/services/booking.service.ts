@@ -372,3 +372,19 @@ export async function createBooking(input: CreateBookingInput) {
     'This time is no longer available. Your payment was not taken.',
   );
 }
+
+export interface CancelBookingInput {
+  bookingId: number;
+  actorId: number;
+  actorRole: 'STUDENT' | 'TUTOR' | 'ADMIN';
+  reason?: string | null;
+  now?: Date;
+}
+
+export async function cancelBooking(_input: CancelBookingInput): Promise<{
+  bookingId: number;
+  refundPercentage: 100 | 50 | 0;
+  refundAmount: number;
+}> {
+  throw new BookingError(500, 'Not implemented: cancelBooking');
+}

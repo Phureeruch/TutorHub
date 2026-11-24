@@ -1,4 +1,4 @@
-import type { Availability, Booking } from '../types/types'
+import type { Availability, Booking, PaymentStatus } from '../types/types'
 
 export const HOUR_MS = 60 * 60 * 1000
 
@@ -92,4 +92,31 @@ export function hasBookingOverlap(
 /** BR-09: total is fixed from the snapshot at confirmation time. */
 export function calculateTotalPrice(hourlyPriceSnapshot: number, durationHours: number): number {
   return hourlyPriceSnapshot * durationHours
+}
+
+export interface RefundPreview {
+  refundPercentage: 100 | 50 | 0
+  refundAmount: number
+  paymentStatus: PaymentStatus
+  hoursUntilStart: number
+}
+
+/** BR-11: 3-tier student cancellation refund calculation. */
+export function calculateStudentRefund(
+  _totalPrice: number,
+  _startTime: Date | string,
+  _now: Date,
+): RefundPreview {
+  throw new Error('Not implemented: calculateStudentRefund')
+}
+
+/** BR-13: merge an interval with any adjacent open windows for the same tutor. */
+export function mergeAdjacentAvailabilities(
+  _availabilities: Availability[],
+  _tutorId: number,
+  _interval: Interval,
+  _nextId: number,
+  _stamp: string,
+): { availabilities: Availability[]; merged: Availability; nextAvailabilityId: number } {
+  throw new Error('Not implemented: mergeAdjacentAvailabilities')
 }
