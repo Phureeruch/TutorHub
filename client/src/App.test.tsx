@@ -24,7 +24,8 @@ describe('route guard (FR-03, BR-03)', () => {
   it('sends a newly signed-in tutor to their dashboard', async () => {
     const user = userEvent.setup()
     renderAppAt('/login', null)
-    await user.click(screen.getByRole('button', { name: "Fill in Alice's credentials" }))
+    await user.type(await screen.findByLabelText('Email'), 'alice@tutorhub.dev')
+    await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Availability' })).toBeTruthy()
     expect(window.location.pathname).toBe('/tutor/dashboard')
@@ -419,10 +420,25 @@ describe('review fixes: headings, filters and field states', () => {
 })
 
 describe('auth view layout and validation (F-01, UI/UX)', () => {
-  it('renders a centered login card without the marketing intro section', async () => {
+  it('renders a centered login card without the marketing intro or seed accounts section, while keeping demo controls', async () => {
     renderAppAt('/login', null)
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
     expect(screen.queryByText(/Book an hour with a tutor from your school/i)).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Seed accounts' })).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Demo controls' })).toBeTruthy()
+  })
+
+  it('toggles password visibility with the eye icon button on login and registration forms', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/login', null)
+    const passwordInput = (await screen.findByLabelText('Password')) as HTMLInputElement
+    expect(passwordInput.type).toBe('password')
+
+    await user.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(passwordInput.type).toBe('text')
+
+    await user.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(passwordInput.type).toBe('password')
   })
 
   it('marks the password input aria-invalid and focuses it when registering with a short password', async () => {

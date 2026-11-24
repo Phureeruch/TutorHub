@@ -4,10 +4,11 @@ import { useMockApp } from '../../context/appContext'
 import { useNow } from '../../hooks/useNow'
 import type { Availability, Booking, TeachingLevel } from '../../types/types'
 import { HOUR_MS } from '../../utils/bookingRules'
-import { formatDay, formatHours, formatMoney, formatRateRange, formatTimeRange, toDateInputValue } from '../../utils/format'
+import { formatDay, formatHours, formatMoney, formatRateRange, formatTimeRange, initialsOf, toDateInputValue } from '../../utils/format'
 import { isTeachingLevel, LEVEL_LABEL, TEACHING_LEVELS } from '../../utils/levels'
 import { subjectNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
+import { DiscoveryBannerArt, EmptyStateArt, IconArrowRight } from '../ui/Illustrations'
 import { TimeTrack } from '../ui/TimeTrack'
 import { BookingModal } from './BookingModal'
 import { SubjectList } from './SubjectDetails'
@@ -20,8 +21,15 @@ function TutorEntry({ listing, onBook }: { listing: TutorListing; onBook(a: Avai
   return (
     <article className="th-tutor" aria-labelledby={headingId}>
       <div className="th-tutor-about">
-        <h2 id={headingId}>{user.name}</h2>
-        <p className="th-tutor-rate">{formatRateRange(subjects.map((s) => s.hourlyPrice))}</p>
+        <div className="th-tutor-head">
+          <span className="th-tutor-avatar" aria-hidden="true">
+            {initialsOf(user.name)}
+          </span>
+          <div>
+            <h2 id={headingId}>{user.name}</h2>
+            <p className="th-tutor-rate">{formatRateRange(subjects.map((s) => s.hourlyPrice))}</p>
+          </div>
+        </div>
         {profile.bio && <p className="th-tutor-bio">{profile.bio}</p>}
         <SubjectList subjects={subjects} />
       </div>
@@ -52,6 +60,7 @@ function TutorEntry({ listing, onBook }: { listing: TutorListing; onBook(a: Avai
                   aria-label={`Book ${user.name} on ${formatDay(a.startTime)} ${formatTimeRange(a.startTime, a.endTime)}`}
                 >
                   Book
+                  <IconArrowRight />
                 </button>
               </li>
             ))}
@@ -114,10 +123,15 @@ export function StudentDiscoveryView() {
 
   return (
     <main className="th-page">
-      <header className="th-page-header">
-        <h1>Find a tutor</h1>
-        <p>Pick a subject, then book part or all of a tutor’s open window.</p>
-      </header>
+      <div className="th-page-banner">
+        <header className="th-page-header">
+          <h1>
+            Find a <span className="th-accent-text">tutor</span>
+          </h1>
+          <p>Pick a subject, then book part or all of a tutor’s open window.</p>
+        </header>
+        <DiscoveryBannerArt />
+      </div>
 
       {confirmed && (
         <div className="th-notice th-notice-success mb-4 d-flex flex-wrap justify-content-between gap-2" role="status">
@@ -202,7 +216,8 @@ export function StudentDiscoveryView() {
 
       {listings.length === 0 ? (
         <div className="th-empty" role="status">
-          <p className="mb-2">{emptyMessage()}</p>
+          <EmptyStateArt kind="search" />
+          <p className="mb-1">{emptyMessage()}</p>
           {filtered && (
             <button type="button" className="btn btn-ink btn-sm" onClick={clearFilters}>
               Show all open times

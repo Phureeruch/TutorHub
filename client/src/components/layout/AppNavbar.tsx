@@ -4,6 +4,7 @@ import type { AppPath } from '../../routing/routes'
 import type { Role } from '../../types/types'
 import { initialsOf } from '../../utils/format'
 import { AppLink } from '../ui/AppLink'
+import { BrandMark } from '../ui/Illustrations'
 
 const NAV_ITEMS: Record<Role, { to: AppPath; label: string }[]> = {
   STUDENT: [
@@ -101,6 +102,7 @@ export function AppNavbar({ currentPath }: { currentPath: string }) {
     <header className="th-nav">
       <nav className="th-nav-inner" aria-label="Main">
         <AppLink to={NAV_ITEMS[user.role][0].to} className="th-wordmark">
+          <BrandMark size={24} />
           TutorHub
         </AppLink>
         <button

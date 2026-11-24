@@ -30,11 +30,23 @@ const STATUS_TEXT: Record<Booking['status'], string> = {
   COMPLETED: 'Completed',
 }
 
+const STATUS_TAG_CLASS: Record<Booking['status'], string> = {
+  CONFIRMED: 'th-tag th-tag-success',
+  CANCELLED: 'th-tag th-tag-danger',
+  COMPLETED: 'th-tag th-tag-primary',
+}
+
+const PAYMENT_TAG_CLASS: Record<Booking['paymentStatus'], string> = {
+  SUCCESS: 'th-tag',
+  REFUNDED_PARTIAL: 'th-tag th-tag-warning',
+  REFUNDED_FULL: 'th-tag',
+}
+
 export function BookingStatusTags({ booking }: { booking: Booking }) {
   return (
     <span className="d-inline-flex flex-wrap gap-1">
-      <span className="th-tag th-tag-success">{STATUS_TEXT[booking.status]}</span>
-      <span className="th-tag">{PAYMENT_TEXT[booking.paymentStatus]}</span>
+      <span className={STATUS_TAG_CLASS[booking.status]}>{STATUS_TEXT[booking.status]}</span>
+      <span className={PAYMENT_TAG_CLASS[booking.paymentStatus]}>{PAYMENT_TEXT[booking.paymentStatus]}</span>
     </span>
   )
 }
