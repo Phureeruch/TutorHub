@@ -187,3 +187,36 @@ export function mergeAdjacentAvailabilities(
     nextAvailabilityId: nextId + 1,
   }
 }
+
+function parseMinutes(timeStr: string): number {
+  if (timeStr === '24:00') return 24 * 60
+  const [h, m] = timeStr.split(':').map(Number)
+  return (h ?? 0) * 60 + (m ?? 0)
+}
+
+/**
+ * Checks if a 1-hour booking slot starting at `slotStart` fits within the
+ * optional [startHour, endHour] daily time window (local time).
+ */
+export function isSlotInTimeWindow(
+  slotStart: Date,
+  startHour?: string,
+  endHour?: string,
+): boolean {
+  if (!startHour && !endHour) return true
+
+  const slotMinutes = slotStart.getHours() * 60 + slotStart.getMinutes()
+  const slotEndMinutes = slotMinutes + 60
+
+  if (startHour) {
+    const startMin = parseMinutes(startHour)
+    if (slotMinutes < startMin) return false
+  }
+
+  if (endHour) {
+    const endMin = parseMinutes(endHour)
+    if (slotEndMinutes > endMin) return false
+  }
+
+  return true
+}

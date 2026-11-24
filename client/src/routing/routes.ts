@@ -5,7 +5,7 @@ export const PUBLIC_PATHS = ['/login', '/register'] as const
 export const ROLE_PATHS = {
   STUDENT: ['/student/discover', '/student/bookings'],
   TUTOR: ['/tutor/dashboard', '/tutor/profile', '/tutor/appointments'],
-  ADMIN: ['/admin/bookings'],
+  ADMIN: ['/admin/bookings', '/admin/tutors', '/admin/subjects'],
 } as const satisfies Record<Role, readonly string[]>
 
 export type PublicPath = (typeof PUBLIC_PATHS)[number]

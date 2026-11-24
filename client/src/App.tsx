@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AdminBookingsView } from './components/admin/AdminBookingsView'
+import { AdminSubjectsView } from './components/admin/AdminSubjectsView'
+import { AdminTutorsView } from './components/admin/AdminTutorsView'
 import { AppErrorBoundary } from './components/layout/AppErrorBoundary'
 import { AuthView } from './components/auth/AuthView'
 import { EmailVerificationBanner } from './components/auth/EmailVerificationBanner'
@@ -32,6 +34,10 @@ function renderView(path: AppPath) {
       return <TutorDashboardView section="appointments" />
     case '/admin/bookings':
       return <AdminBookingsView />
+    case '/admin/tutors':
+      return <AdminTutorsView />
+    case '/admin/subjects':
+      return <AdminSubjectsView />
   }
 }
 

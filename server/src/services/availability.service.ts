@@ -90,6 +90,18 @@ export async function createAvailability(
   try {
     return await prisma.$transaction(
       async (tx) => {
+        const tutorUser = await tx.user.findUnique({
+          where: { id: tutorId },
+          select: { id: true, role: true, isApproved: true },
+        });
+
+        if (!tutorUser || tutorUser.role !== 'TUTOR' || !tutorUser.isApproved) {
+          throw new AvailabilityError(
+            'Your tutor account is pending administrator approval.',
+            403,
+          );
+        }
+
         const overlappingAvailability = await tx.availability.findFirst({
           where: {
             tutorId,
@@ -151,6 +163,18 @@ export async function updateAvailability(
   try {
     return await prisma.$transaction(
       async (tx) => {
+        const tutorUser = await tx.user.findUnique({
+          where: { id: tutorId },
+          select: { id: true, role: true, isApproved: true },
+        });
+
+        if (!tutorUser || tutorUser.role !== 'TUTOR' || !tutorUser.isApproved) {
+          throw new AvailabilityError(
+            'Your tutor account is pending administrator approval.',
+            403,
+          );
+        }
+
         const existing = await tx.availability.findUnique({
           where: { id: availabilityId },
         });

@@ -16,7 +16,11 @@ const NAV_ITEMS: Record<Role, { to: AppPath; label: string }[]> = {
     { to: '/tutor/profile', label: 'Profile & rate' },
     { to: '/tutor/appointments', label: 'Appointments' },
   ],
-  ADMIN: [{ to: '/admin/bookings', label: 'All bookings' }],
+  ADMIN: [
+    { to: '/admin/bookings', label: 'All bookings' },
+    { to: '/admin/tutors', label: 'Tutors' },
+    { to: '/admin/subjects', label: 'Subjects' },
+  ],
 }
 
 const ROLE_LABEL: Record<Role, string> = { STUDENT: 'Student', TUTOR: 'Tutor', ADMIN: 'Admin' }
