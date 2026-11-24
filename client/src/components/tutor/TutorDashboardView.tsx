@@ -9,6 +9,7 @@ import { LEVEL_LABEL, orderLevels, TEACHING_LEVELS } from '../../utils/levels'
 import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
+import { EmptyStateArt } from '../ui/Illustrations'
 import { BookingStatusTags, PriceSnapshot } from '../ui/PriceSnapshot'
 import { TimeTrack } from '../ui/TimeTrack'
 import { buildAvailabilityRequest, groupScheduleByDay } from './tutorSchedule'
@@ -173,7 +174,10 @@ function AvailabilitySection({ tutor }: { tutor: User }) {
           Blue is open for booking. Hatched time is booked; it was cut out of the window it came from.
         </p>
         {days.length === 0 ? (
-          <div className="th-empty">No windows yet. Add one above so students can book you.</div>
+          <div className="th-empty">
+            <EmptyStateArt kind="schedule" />
+            <p className="mb-0">No windows yet. Add one above so students can book you.</p>
+          </div>
         ) : (
           <ol className="th-schedule">
             {days.map((day) => (
@@ -436,7 +440,9 @@ function ProfileSection({ tutor }: { tutor: User }) {
   return (
     <>
       <header className="th-page-header">
-        <h1>Profile & rate</h1>
+        <h1>
+          Profile &amp; <span className="th-accent-text">rate</span>
+        </h1>
         <p>What students see when they choose a tutor.</p>
       </header>
       {profile ? (
@@ -467,7 +473,8 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
       </header>
       {bookings.length === 0 ? (
         <div className="th-empty">
-          <p className="mb-2">No lessons booked yet. Students can book once you have open windows.</p>
+          <EmptyStateArt kind="bookings" />
+          <p className="mb-1">No lessons booked yet. Students can book once you have open windows.</p>
           <AppLink to="/tutor/dashboard" className="btn btn-ink btn-sm">
             Add availability
           </AppLink>

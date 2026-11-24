@@ -4,6 +4,7 @@ import { useCurrentUser, useMockApp } from '../../context/appContext'
 import { formatDay, formatHours, formatMoney, formatRate, formatTimeRange } from '../../utils/format'
 import { subjectNameOf, userNameOf } from '../../utils/lookups'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
+import { EmptyStateArt } from '../ui/Illustrations'
 import { BookingStatusTags } from '../ui/PriceSnapshot'
 
 /** F-07 / FR-11 / BR-03: every booking in the school, admin only (route-guarded). */
@@ -16,7 +17,9 @@ export function AdminBookingsView() {
   return (
     <main className="th-page">
       <header className="th-page-header">
-        <h1>All bookings</h1>
+        <h1>
+          All <span className="th-accent-text">bookings</span>
+        </h1>
         <p>Every lesson booked at the school, with the price recorded when it was confirmed.</p>
       </header>
 
@@ -43,7 +46,10 @@ export function AdminBookingsView() {
       </dl>
 
       {bookings.length === 0 ? (
-        <div className="th-empty">No bookings yet.</div>
+        <div className="th-empty">
+          <EmptyStateArt kind="bookings" />
+          <p className="mb-0">No bookings yet.</p>
+        </div>
       ) : (
         <div className="table-responsive th-table-wrap">
           <table className="table th-table align-middle" aria-label="All bookings, earliest first">

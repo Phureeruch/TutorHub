@@ -5,6 +5,7 @@ import { formatDay, formatHours, formatTimeRange } from '../../utils/format'
 import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
+import { EmptyStateArt } from '../ui/Illustrations'
 import { BookingStatusTags, PriceSnapshot } from '../ui/PriceSnapshot'
 
 /** F-05 / FR-11: the signed-in student's own bookings only (NFR-02). */
@@ -17,13 +18,16 @@ export function StudentBookingsView() {
   return (
     <main className="th-page">
       <header className="th-page-header">
-        <h1>My bookings</h1>
+        <h1>
+          My <span className="th-accent-text">bookings</span>
+        </h1>
         <p>Each booking keeps the price you paid, even if the tutor changes their rate later.</p>
       </header>
 
       {bookings.length === 0 ? (
         <div className="th-empty">
-          <p className="mb-2">You have no bookings yet.</p>
+          <EmptyStateArt kind="bookings" />
+          <p className="mb-1">You have no bookings yet.</p>
           <AppLink to="/student/discover" className="btn btn-ink btn-sm">
             Find a tutor
           </AppLink>

@@ -30,8 +30,8 @@ All colors live in `:root` in `client/src/index.css`. **Never write raw hex or `
 ## 2. Typography, Radius, Spacing & Elevation Tokens
 
 - **Font Family:** `'Plus Jakarta Sans', 'Inter', system-ui, sans-serif` (`--th-font-display` & `--th-font-body`).
-- **Type Scale:** `--th-text-display`, `--th-text-h1`, `--th-text-h2`, `--th-text-h3`, `--th-text-body` (`1rem`), `--th-text-caption` (`0.875rem`), `--th-text-button` (`0.9375rem`). Use `.th-accent-text` on a `<span>` inside an `<h1>`/`<h2>` for a two-tone navy + blue headline.
-- **Radius Scale:** `--th-radius-sm` (`8px`), `--th-radius-md` (`12px` — inputs, buttons, nested cards), `--th-radius-lg` (`20px` — main cards, modals, panels, tables), `--th-radius-pill` (`999px` — filter pills, status badges, small buttons).
+- **Type Scale:** `--th-text-display`, `--th-text-h1`, `--th-text-h2`, `--th-text-h3`, `--th-text-body` (`0.90625rem` / ~14.5px), `--th-text-caption` (`0.8125rem`), `--th-text-button` (`0.84375rem`). Use `.th-accent-text` on a `<span>` inside an `<h1>`/`<h2>` for a two-tone navy + blue headline.
+- **Radius Scale:** `--th-radius-sm` (`8px`), `--th-radius-md` (`10px` — inputs, buttons, nested cards), `--th-radius-lg` (`16px` — main cards, modals, panels, tables), `--th-radius-pill` (`999px` — filter pills, status badges, small buttons).
 - **Spacing Scale:** `--th-space-1` (`4px`), `--th-space-2` (`8px`), `--th-space-3` (`12px`), `--th-space-4` (`16px`), `--th-space-5` (`24px`), `--th-space-6` (`32px`), `--th-space-7` (`48px`).
 - **Shadows:** Prefer crisp `--th-border` borders on cream + subtle navy elevation (`--th-shadow-sm`, `--th-shadow-md`, `--th-shadow-lg`).
 
@@ -50,6 +50,7 @@ All colors live in `:root` in `client/src/index.css`. **Never write raw hex or `
 | **Data Tables & Stats** | `.th-table-wrap` + `table.table.th-table`, `.th-stats` + `.th-stats-accent` | Rounded `20px` container, tabular numbers via `.th-num` |
 | **Modals & Empty States** | `<Modal>` (`.th-modal`), `.th-detail` (`<dl>`), `.th-empty` | Keep existing `Modal` component so focus trap & `Escape` behavior stay intact |
 | **Password Inputs** | `<PasswordInput>` (`.th-password-field`, `.th-password-toggle`) | Reusable eye-icon visibility toggle with `aria-label` & `aria-pressed` |
+| **Brand & Illustrations** | `<BrandMark>`, `<AuthHeroGraphic>`, `<DiscoveryBannerArt>`, `<EmptyStateArt>` (`Illustrations.tsx`) | Token-driven inline SVG artwork (`aria-hidden="true"`, zero external URLs) |
 
 ---
 
