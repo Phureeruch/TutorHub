@@ -4,6 +4,7 @@ import type {
   Availability,
   Booking,
   BookingAttachment,
+  CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
   RegisterRequest,
@@ -205,6 +206,13 @@ export const httpClient = {
     })
   },
 
+  async updateAvailability(availabilityId: number, req: CreateAvailabilityRequest): Promise<Availability> {
+    return request<Availability>(`/api/tutor/availability/${availabilityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    })
+  },
+
   async uploadAttachment(file: File | BookingAttachment): Promise<Required<BookingAttachment>> {
     if (file instanceof File) {
       const formData = new FormData()
@@ -267,6 +275,13 @@ export const httpClient = {
 
   async getBookingById(bookingId: number): Promise<Booking> {
     return request<Booking>(`/api/bookings/${bookingId}`)
+  },
+
+  async cancelBooking(bookingId: number, reason?: string): Promise<CancelBookingResponse> {
+    return request<CancelBookingResponse>(`/api/bookings/${bookingId}/cancel`, {
+      method: 'PATCH',
+      body: JSON.stringify(reason !== undefined ? { reason } : {}),
+    })
   },
 
   async getAdminSummary(): Promise<AdminSummary> {

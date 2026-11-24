@@ -4,6 +4,7 @@ import type {
   AdminSummary,
   Availability,
   Booking,
+  CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
   MockDb,
@@ -43,9 +44,11 @@ export interface MockAppValue {
 
   updateTutorProfile(req: UpdateTutorProfileRequest): Promise<TutorProfile>
   createAvailability(req: CreateAvailabilityRequest): Promise<Availability>
+  updateAvailability(availabilityId: number, req: CreateAvailabilityRequest): Promise<Availability>
   deleteAvailability(availabilityId: number): Promise<void>
 
   createBookingWithMockPayment(req: CreateBookingRequest): Promise<Booking>
+  cancelBooking(bookingId: number, reason?: string): Promise<CancelBookingResponse>
   fetchDirectory(filters: DirectoryFilters): Promise<TutorListing[]>
   fetchBookingById(bookingId: number): Promise<Booking>
   resetToSeedData(): void

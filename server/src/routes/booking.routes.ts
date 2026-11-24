@@ -2,7 +2,11 @@ import { Router, type Request, type Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, type AuthenticatedUser } from '../middleware/auth.js';
-import { BookingError, createBooking } from '../services/booking.service.js';
+import {
+  BookingError,
+  cancelBooking,
+  createBooking,
+} from '../services/booking.service.js';
 
 const router = Router();
 
@@ -240,6 +244,80 @@ router.post('/', async (req: Request, res: Response) => {
     }
     res.status(500).json({ message: 'Unable to create booking.' });
   }
+});
+
+// PATCH /api/bookings/:id/cancel
+// Student owner: 3-tier refund + restore & merge availability (BR-11, BR-13).
+// Tutor owner: 100% refund + keep time slot permanently blocked (BR-12).
+router.patch('/:id/cancel', async (req: Request, res: Response) => {
+  const user = getAuthenticatedUser(res);
+  if (!user) {
+    res.status(401).json({ message: 'Authentication required.' });
+    return;
+  }
+
+  const bookingId = Number(req.params.id);
+  if (!Number.isInteger(bookingId) || bookingId <= 0) {
+    res.status(404).json({ message: 'Booking not found.' });
+    return;
+  }
+
+  const { reason } = req.body ?? {};
+  if (
+    reason !== undefined &&
+    reason !== null &&
+    (typeof reason !== 'string' || reason.trim().length > 300)
+  ) {
+    res.status(400).json({ message: 'Invalid cancellation reason.' });
+    return;
+  }
+
+  try {
+    const result = await cancelBooking({
+      bookingId,
+      actorId: user.id,
+      actorRole: user.role,
+      reason: reason ?? null,
+    });
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: result.bookingId },
+      include: bookingInclude,
+    });
+
+    if (!booking) {
+      res.status(500).json({ message: 'Unable to retrieve cancelled booking.' });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Booking cancelled successfully.',
+      refundPercentage: result.refundPercentage,
+      refundAmount: result.refundAmount,
+      booking: toBookingDto(booking),
+    });
+  } catch (error) {
+    if (error instanceof BookingError) {
+      res.status(error.statusCode).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: 'Unable to cancel booking.' });
+  }
+});
+
+// PUT or PATCH /api/bookings/:id (BR-10: Confirmed booking schedule fields are immutable)
+router.put('/:id', (_req: Request, res: Response) => {
+  res.status(404).json({
+    message:
+      'Confirmed bookings cannot be modified directly. Cancel and book a new lesson instead.',
+  });
+});
+
+router.patch('/:id', (_req: Request, res: Response) => {
+  res.status(404).json({
+    message:
+      'Confirmed bookings cannot be modified directly. Cancel and book a new lesson instead.',
+  });
 });
 
 export default router;

@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Availability, Booking } from '../types/types'
 import {
+  calculateStudentRefund,
   calculateTotalPrice,
   getValidStartSlots,
   hasBookingOverlap,
+  HOUR_MS,
   isAlignedBookingStart,
+  mergeAdjacentAvailabilities,
   sliceAvailabilityAfterBooking,
   validateAvailabilityInput,
 } from './bookingRules'
@@ -172,5 +175,61 @@ describe('hasBookingOverlap (BR-07)', () => {
 describe('calculateTotalPrice (BR-09)', () => {
   it('multiplies the hourly snapshot by whole hours', () => {
     expect(calculateTotalPrice(40, 3)).toBe(120)
+  })
+})
+
+describe('calculateStudentRefund (BR-11, STS-10.1)', () => {
+  const now = new Date('2026-11-24T10:00:00.000Z')
+
+  it('returns 100% refund at >= 72h (including exact 72h boundary)', () => {
+    const exact72h = new Date(now.getTime() + 72 * HOUR_MS)
+    expect(calculateStudentRefund(800, exact72h, now)).toEqual({
+      refundPercentage: 100,
+      refundAmount: 800,
+      paymentStatus: 'REFUNDED_FULL',
+      hoursUntilStart: 72,
+    })
+  })
+
+  it('returns 50% refund between 24h (inclusive) and < 72h', () => {
+    const under72h = new Date(now.getTime() + 72 * HOUR_MS - 1000)
+    const exact24h = new Date(now.getTime() + 24 * HOUR_MS)
+    expect(calculateStudentRefund(800, under72h, now).refundPercentage).toBe(50)
+    expect(calculateStudentRefund(800, under72h, now).refundAmount).toBe(400)
+    expect(calculateStudentRefund(800, exact24h, now)).toEqual({
+      refundPercentage: 50,
+      refundAmount: 400,
+      paymentStatus: 'REFUNDED_PARTIAL',
+      hoursUntilStart: 24,
+    })
+  })
+
+  it('returns 0% refund when < 24h before lesson start', () => {
+    const under24h = new Date(now.getTime() + 24 * HOUR_MS - 1000)
+    expect(calculateStudentRefund(800, under24h, now).refundPercentage).toBe(0)
+    expect(calculateStudentRefund(800, under24h, now).refundAmount).toBe(0)
+    expect(calculateStudentRefund(800, under24h, now).paymentStatus).toBe('SUCCESS')
+  })
+})
+
+describe('mergeAdjacentAvailabilities (BR-13, STS-12.1)', () => {
+  it('merges a released middle interval bridging left and right neighbors for the same tutor', () => {
+    const left = availability(t(9), t(10), { id: 1, tutorId: 1 })
+    const right = availability(t(11), t(12), { id: 2, tutorId: 1 })
+    const otherTutor = availability(t(10), t(11), { id: 3, tutorId: 2 })
+
+    const res = mergeAdjacentAvailabilities(
+      [left, right, otherTutor],
+      1,
+      { start: t(10), end: t(11) },
+      10,
+      '2026-11-24T10:00:00.000Z',
+    )
+
+    const tutor1 = res.availabilities.filter((a) => a.tutorId === 1)
+    expect(tutor1).toHaveLength(1)
+    expect(tutor1[0].startTime).toBe(t(9).toISOString())
+    expect(tutor1[0].endTime).toBe(t(12).toISOString())
+    expect(res.availabilities.filter((a) => a.tutorId === 2)).toHaveLength(1)
   })
 })

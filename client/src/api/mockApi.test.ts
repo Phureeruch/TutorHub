@@ -4,6 +4,7 @@ import type { MockDb, TeachingLevel } from '../types/types'
 import {
   ApiError,
   MAX_TOPICS_LENGTH,
+  cancelBooking,
   createAvailability,
   createBooking,
   deleteAvailability,
@@ -13,6 +14,7 @@ import {
   login,
   registerStudent,
   resetPassword,
+  updateAvailability,
   updateTutorProfile,
   verifyEmail,
 } from './mockApi'
@@ -474,5 +476,95 @@ describe('listTutorDirectory (FR-07)', () => {
     const late = new Date(2026, 10, 13, 12, 0) // Alice's 09:30–12:30 window has no start after 12:00
     const alice = listTutorDirectory(db, { now: late }).find((t) => t.user.id === ALICE)!
     expect(alice.availabilities.some((a) => a.id === 1)).toBe(false)
+  })
+})
+
+describe('cancelBooking & interval merging (F-10, F-11, F-12)', () => {
+  it('calculates 50% refund for a student cancelling between 24h and 72h and merges restored slot with adjacent windows (STS-10.2, STS-10.3, STS-12.2)', () => {
+    // Seed booking #1 is Charlie with Alice at D+2 14:00–15:00 (54h after NOW = 2026-11-12 08:00),
+    // sandwiched between Alice's D+2 13:00–14:00 (#2) and D+2 15:00–17:00 (#3) windows!
+    const before = fresh()
+    const { db, data } = cancelBooking(before, userOf(before, CHARLIE), 1, NOW)
+
+    expect(data.refundPercentage).toBe(50)
+    expect(data.refundAmount).toBe(200)
+    expect(data.booking.status).toBe('CANCELLED')
+    expect(data.booking.paymentStatus).toBe('REFUNDED_PARTIAL')
+    expect(data.booking.cancelledBy).toBe('STUDENT')
+
+    // Alice's D+2 windows [13:00–14:00], [14:00–15:00], [15:00–17:00] merge into one [13:00–17:00] block!
+    const aliceD2 = db.availabilities.filter((a) => a.tutorId === ALICE && a.startTime.startsWith('2026-11-14'))
+    expect(aliceD2).toHaveLength(1)
+    expect(aliceD2[0].startTime).toBe(day(2, 13))
+    expect(aliceD2[0].endTime).toBe(day(2, 17))
+  })
+
+  it('calculates 100% refund for a student cancelling >= 72h before lesson start (STS-10.1, STS-10.2)', () => {
+    // Seed booking #2 is Charlie with Bob at D+4 10:00–12:00 (98h after NOW), totalPrice = 600.
+    const before = fresh()
+    const { db, data } = cancelBooking(before, userOf(before, CHARLIE), 2, NOW)
+
+    expect(data.refundPercentage).toBe(100)
+    expect(data.refundAmount).toBe(600)
+    expect(data.booking.paymentStatus).toBe('REFUNDED_FULL')
+
+    // Bob's D+4 [09:00–10:00] and [12:00–13:00] merge with [10:00–12:00] into [09:00–13:00]!
+    const bobD4 = db.availabilities.filter((a) => a.tutorId === BOB && a.startTime.startsWith('2026-11-16'))
+    expect(bobD4).toHaveLength(1)
+    expect(bobD4[0].startTime).toBe(day(4, 9))
+    expect(bobD4[0].endTime).toBe(day(4, 13))
+  })
+
+  it('gives 100% refund on tutor cancellation and keeps the cancelled slot permanently blocked (STS-11.1)', () => {
+    const before = fresh()
+    const { db, data } = cancelBooking(before, userOf(before, ALICE), 1, NOW)
+
+    expect(data.refundPercentage).toBe(100)
+    expect(data.refundAmount).toBe(400)
+    expect(data.booking.status).toBe('CANCELLED')
+    expect(data.booking.cancelledBy).toBe('TUTOR')
+    expect(data.booking.paymentStatus).toBe('REFUNDED_FULL')
+
+    // D+2 [13:00–14:00] and [15:00–17:00] remain separate; [14:00–15:00] is NOT restored!
+    const aliceD2 = db.availabilities.filter((a) => a.tutorId === ALICE && a.startTime.startsWith('2026-11-14'))
+    expect(aliceD2).toHaveLength(2)
+  })
+
+  it('forbids non-owners from cancelling a booking with 403 (STS-10.5, STS-11.2)', () => {
+    const db = fresh()
+    expect(apiErrorOf(() => cancelBooking(db, userOf(db, DIANA), 1, NOW)).status).toBe(403)
+    expect(apiErrorOf(() => cancelBooking(db, userOf(db, BOB), 1, NOW)).status).toBe(403)
+    expect(apiErrorOf(() => cancelBooking(db, userOf(db, ADMIN), 1, NOW)).status).toBe(403)
+  })
+
+  it('merges adjacent availability on createAvailability and updates availability via updateAvailability (STS-12.3, STS-12.4)', () => {
+    const before = fresh()
+    // Alice already has D+1 09:30–12:30 (#1). Adding D+1 12:30–14:30 merges into 09:30–14:30.
+    const { db, data } = createAvailability(
+      before,
+      userOf(before, ALICE),
+      { startTime: day(1, 12, 30), endTime: day(1, 14, 30) },
+      NOW,
+    )
+    expect(data.startTime).toBe(day(1, 9, 30))
+    expect(data.endTime).toBe(day(1, 14, 30))
+
+    // Non-owner tutor gets 403 on updateAvailability
+    expect(
+      apiErrorOf(() =>
+        updateAvailability(db, userOf(db, BOB), data.id, { startTime: day(1, 10, 30), endTime: day(1, 13, 30) }, NOW),
+      ).status,
+    ).toBe(403)
+
+    // Owner updates cleanly
+    const updated = updateAvailability(
+      db,
+      userOf(db, ALICE),
+      data.id,
+      { startTime: day(1, 10, 30), endTime: day(1, 13, 30) },
+      NOW,
+    )
+    expect(updated.data.startTime).toBe(day(1, 10, 30))
+    expect(updated.data.endTime).toBe(day(1, 13, 30))
   })
 })

@@ -1,4 +1,4 @@
-import type { Availability, Booking } from '../types/types'
+import type { Availability, Booking, PaymentStatus } from '../types/types'
 
 export const HOUR_MS = 60 * 60 * 1000
 
@@ -92,4 +92,98 @@ export function hasBookingOverlap(
 /** BR-09: total is fixed from the snapshot at confirmation time. */
 export function calculateTotalPrice(hourlyPriceSnapshot: number, durationHours: number): number {
   return hourlyPriceSnapshot * durationHours
+}
+
+export interface RefundPreview {
+  refundPercentage: 100 | 50 | 0
+  refundAmount: number
+  paymentStatus: PaymentStatus
+  hoursUntilStart: number
+}
+
+const roundCurrency = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100
+
+/** BR-11: 3-tier student cancellation refund calculation. */
+export function calculateStudentRefund(
+  totalPrice: number,
+  startTime: Date | string,
+  now: Date,
+): RefundPreview {
+  const startMs = new Date(startTime).getTime()
+  const remainingMs = startMs - now.getTime()
+  const hoursUntilStart = remainingMs / HOUR_MS
+
+  if (remainingMs >= 72 * HOUR_MS) {
+    return {
+      refundPercentage: 100,
+      refundAmount: roundCurrency(totalPrice),
+      paymentStatus: 'REFUNDED_FULL',
+      hoursUntilStart,
+    }
+  }
+  if (remainingMs >= 24 * HOUR_MS) {
+    return {
+      refundPercentage: 50,
+      refundAmount: roundCurrency(totalPrice * 0.5),
+      paymentStatus: 'REFUNDED_PARTIAL',
+      hoursUntilStart,
+    }
+  }
+  return {
+    refundPercentage: 0,
+    refundAmount: 0,
+    paymentStatus: 'SUCCESS',
+    hoursUntilStart,
+  }
+}
+
+/** BR-13: merge an interval with any adjacent open windows for the same tutor. */
+export function mergeAdjacentAvailabilities(
+  availabilities: Availability[],
+  tutorId: number,
+  interval: Interval,
+  nextId: number,
+  stamp: string,
+): { availabilities: Availability[]; merged: Availability; nextAvailabilityId: number } {
+  const startMs = interval.start.getTime()
+  const endMs = interval.end.getTime()
+
+  const touching = availabilities.filter(
+    (a) =>
+      a.tutorId === tutorId &&
+      (new Date(a.endTime).getTime() === startMs || new Date(a.startTime).getTime() === endMs),
+  )
+
+  let mergedStart = startMs
+  let mergedEnd = endMs
+  for (const row of touching) {
+    mergedStart = Math.min(mergedStart, new Date(row.startTime).getTime())
+    mergedEnd = Math.max(mergedEnd, new Date(row.endTime).getTime())
+  }
+
+  const touchingIds = new Set(touching.map((a) => a.id))
+  const earliestCreatedAt =
+    touching.length > 0
+      ? [...touching].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0].createdAt
+      : stamp
+
+  const merged: Availability = {
+    id: nextId,
+    tutorId,
+    startTime: new Date(mergedStart).toISOString(),
+    endTime: new Date(mergedEnd).toISOString(),
+    createdAt: earliestCreatedAt || stamp,
+    updatedAt: stamp,
+  }
+
+  const remaining = availabilities.filter((a) => !touchingIds.has(a.id))
+  const updatedList = [...remaining, merged].sort(
+    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+  )
+
+  return {
+    availabilities: updatedList,
+    merged,
+    nextAvailabilityId: nextId + 1,
+  }
 }

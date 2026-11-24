@@ -385,6 +385,16 @@ export function MockAppProvider({
         const me = actor()
         return mutate((db) => api.createAvailability(db, me, req, new Date()))
       },
+      updateAvailability: async (id, req) => {
+        if (mode === 'api') {
+          const me = actor()
+          const updated = await httpClient.updateAvailability(id, req)
+          await hydrateFromApi(me)
+          return updated
+        }
+        const me = actor()
+        return mutate((db) => api.updateAvailability(db, me, id, req, new Date()))
+      },
       deleteAvailability: async (id) => {
         if (mode === 'api') {
           const me = actor()
@@ -434,6 +444,16 @@ export function MockAppProvider({
         // The whole check-pay-insert step runs on the state as it is *now*,
         // after the delay, like the server's serialisable transaction.
         return mutate((db) => api.createBooking(db, me, req, { now: new Date(), simulateConflict }))
+      },
+      cancelBooking: async (bookingId, reason) => {
+        if (mode === 'api') {
+          const me = actor()
+          const res = await httpClient.cancelBooking(bookingId, reason)
+          await hydrateFromApi(me)
+          return res
+        }
+        const me = actor()
+        return mutate((db) => api.cancelBooking(db, me, bookingId, new Date(), reason))
       },
       fetchDirectory: async (filters: DirectoryFilters) => {
         if (mode === 'api') {

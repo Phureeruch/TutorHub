@@ -138,6 +138,13 @@ export interface CreateBookingRequest {
   attachmentFiles?: File[]
 }
 
+export interface CancelBookingResponse {
+  message: string
+  refundPercentage: 100 | 50 | 0
+  refundAmount: number
+  booking: Booking
+}
+
 // Client-side mock database standing in for PostgreSQL during unit/UI tests.
 export interface MockDb {
   users: User[]
