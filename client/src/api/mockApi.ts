@@ -24,12 +24,14 @@ import type {
   User,
 } from '../types/types'
 import {
+  calculateStudentRefund,
   calculateTotalPrice,
   getValidStartSlots,
   hasBookingOverlap,
   HOUR_MS,
   isAlignedBookingStart,
   isWithin,
+  mergeAdjacentAvailabilities,
   sliceAvailabilityAfterBooking,
   validateAvailabilityInput,
 } from '../utils/bookingRules'
@@ -242,21 +244,20 @@ export function createAvailability(
   }
 
   const stamp = now.toISOString()
-  const availability: Availability = {
-    id: db.nextIds.availability,
-    tutorId: actor.id,
-    startTime: start.toISOString(),
-    endTime: end.toISOString(),
-    createdAt: stamp,
-    updatedAt: stamp,
-  }
+  const { availabilities, merged, nextAvailabilityId } = mergeAdjacentAvailabilities(
+    db.availabilities,
+    actor.id,
+    { start, end },
+    db.nextIds.availability,
+    stamp,
+  )
   return {
     db: {
       ...db,
-      availabilities: [...db.availabilities, availability],
-      nextIds: { ...db.nextIds, availability: availability.id + 1 },
+      availabilities,
+      nextIds: { ...db.nextIds, availability: nextAvailabilityId },
     },
-    data: availability,
+    data: merged,
   }
 }
 
@@ -273,13 +274,50 @@ export function deleteAvailability(db: MockDb, actor: User, availabilityId: numb
 }
 
 export function updateAvailability(
-  _db: MockDb,
-  _actor: User,
-  _availabilityId: number,
-  _req: CreateAvailabilityRequest,
-  _now: Date,
+  db: MockDb,
+  actor: User,
+  availabilityId: number,
+  req: CreateAvailabilityRequest,
+  now: Date,
 ): Mutation<Availability> {
-  throw new ApiError(400, 'Not implemented: updateAvailability')
+  requireRole(actor, 'TUTOR')
+  const target = db.availabilities.find((a) => a.id === availabilityId)
+  if (!target) throw new ApiError(404, 'Availability not found.')
+  if (target.tutorId !== actor.id) throw new ApiError(403, 'You can only edit your own availability.')
+
+  const start = new Date(req.startTime)
+  const end = new Date(req.endTime)
+  const validation = validateAvailabilityInput(start, end, now)
+  if (!validation.ok) throw new ApiError(400, validation.error)
+
+  const others = db.availabilities.filter((a) => a.id !== availabilityId)
+  if (others.some((a) => a.tutorId === actor.id && rangesOverlap(a.startTime, a.endTime, start, end))) {
+    throw new ApiError(400, 'This overlaps availability you already offer.')
+  }
+  if (
+    db.bookings.some(
+      (b) => b.tutorId === actor.id && b.status !== 'CANCELLED' && rangesOverlap(b.startTime, b.endTime, start, end),
+    )
+  ) {
+    throw new ApiError(400, 'This overlaps a lesson that is already booked.')
+  }
+
+  const stamp = now.toISOString()
+  const { availabilities, merged, nextAvailabilityId } = mergeAdjacentAvailabilities(
+    others,
+    actor.id,
+    { start, end },
+    db.nextIds.availability,
+    stamp,
+  )
+  return {
+    db: {
+      ...db,
+      availabilities,
+      nextIds: { ...db.nextIds, availability: nextAvailabilityId },
+    },
+    data: merged,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -409,13 +447,85 @@ export function getBookingById(db: MockDb, actor: User, bookingId: number): Book
 }
 
 export function cancelBooking(
-  _db: MockDb,
-  _actor: User,
-  _bookingId: number,
-  _now: Date,
-  _reason?: string,
+  db: MockDb,
+  actor: User,
+  bookingId: number,
+  now: Date,
+  reason?: string,
 ): Mutation<CancelBookingResponse> {
-  throw new ApiError(400, 'Not implemented: cancelBooking')
+  const existing = db.bookings.find((b) => b.id === bookingId)
+  if (!existing) throw new ApiError(404, 'Booking not found.')
+
+  const isStudentOwner = actor.role === 'STUDENT' && existing.studentId === actor.id
+  const isTutorOwner = actor.role === 'TUTOR' && existing.tutorId === actor.id
+  if (!isStudentOwner && !isTutorOwner) {
+    throw new ApiError(403, 'You are not allowed to cancel this booking.')
+  }
+
+  if (existing.status !== 'CONFIRMED') {
+    throw new ApiError(409, 'Only confirmed bookings can be cancelled.')
+  }
+
+  const start = new Date(existing.startTime)
+  const end = new Date(existing.endTime)
+  if (start.getTime() <= now.getTime()) {
+    throw new ApiError(400, 'You can only cancel a booking before the lesson starts.')
+  }
+
+  if (reason !== undefined && reason.trim().length > 300) {
+    throw new ApiError(400, 'Invalid cancellation reason.')
+  }
+
+  const refund = isStudentOwner
+    ? calculateStudentRefund(existing.totalPrice, start, now)
+    : {
+        refundPercentage: 100 as const,
+        refundAmount: existing.totalPrice,
+        paymentStatus: 'REFUNDED_FULL' as const,
+      }
+
+  const stamp = now.toISOString()
+  const updatedBooking: Booking = {
+    ...existing,
+    status: 'CANCELLED',
+    paymentStatus: refund.paymentStatus,
+    cancelledBy: actor.role,
+    cancelledAt: stamp,
+    refundPercentage: refund.refundPercentage,
+    refundAmount: refund.refundAmount,
+    updatedAt: stamp,
+  }
+
+  let nextAvailabilities = db.availabilities
+  let nextAvailabilityId = db.nextIds.availability
+  // BR-13: Student cancellation restores and merges availability.
+  // BR-12: Tutor cancellation keeps the time slot blocked.
+  if (isStudentOwner) {
+    const mergedResult = mergeAdjacentAvailabilities(
+      db.availabilities,
+      existing.tutorId,
+      { start, end },
+      db.nextIds.availability,
+      stamp,
+    )
+    nextAvailabilities = mergedResult.availabilities
+    nextAvailabilityId = mergedResult.nextAvailabilityId
+  }
+
+  return {
+    db: {
+      ...db,
+      bookings: db.bookings.map((b) => (b.id === existing.id ? updatedBooking : b)),
+      availabilities: nextAvailabilities,
+      nextIds: { ...db.nextIds, availability: nextAvailabilityId },
+    },
+    data: {
+      message: 'Booking cancelled successfully.',
+      refundPercentage: refund.refundPercentage,
+      refundAmount: refund.refundAmount,
+      booking: updatedBooking,
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------

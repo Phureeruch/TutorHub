@@ -386,7 +386,7 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   const mutateBooking = await apiJson(`/api/bookings/${bookingRes.body.id}`, {
     method: 'PUT',
     token: studentToken,
-    body: { durationHours: 2 },
+    body: JSON.stringify({ durationHours: 2 }),
   });
   assert.equal(mutateBooking.status, 404);
 
@@ -396,12 +396,12 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
     {
       method: 'PATCH',
       token: otherToken,
-      body: {},
+      body: JSON.stringify({}),
     },
   );
   assert.equal(strangerCancel.status, 403);
 
-  // Student cancels own booking (< 72h and >= 24h away -> 50% refund) and merges availability (STS-10.2, STS-12.2)
+  // Student cancels own booking (< 24h away -> 0% refund) and merges availability (STS-10.2, STS-10.3, STS-12.2)
   const cancelRes = await apiJson<{
     message: string;
     refundPercentage: number;
@@ -417,13 +417,13 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   }>(`/api/bookings/${bookingRes.body.id}/cancel`, {
     method: 'PATCH',
     token: studentToken,
-    body: { reason: 'Schedule conflict' },
+    body: JSON.stringify({ reason: 'Schedule conflict' }),
   });
   assert.equal(cancelRes.status, 200);
-  assert.equal(cancelRes.body.refundPercentage, 50);
-  assert.equal(cancelRes.body.refundAmount, 225);
+  assert.equal(cancelRes.body.refundPercentage, 0);
+  assert.equal(cancelRes.body.refundAmount, 0);
   assert.equal(cancelRes.body.booking.status, 'CANCELLED');
-  assert.equal(cancelRes.body.booking.paymentStatus, 'REFUNDED_PARTIAL');
+  assert.equal(cancelRes.body.booking.paymentStatus, 'SUCCESS');
   assert.equal(cancelRes.body.booking.cancelledBy, 'STUDENT');
 
   // Re-cancelling an already-cancelled booking returns 409 (STS-10.4)
@@ -432,7 +432,7 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
     {
       method: 'PATCH',
       token: studentToken,
-      body: {},
+      body: JSON.stringify({}),
     },
   );
   assert.equal(cancelAgain.status, 409);
@@ -443,23 +443,25 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   }>('/api/tutor/availability', { token: tutorToken });
   assert.equal(mergedSchedule.status, 200);
   assert.equal(mergedSchedule.body.availabilities.length, 1);
+  availabilityIds.push(mergedSchedule.body.availabilities[0]!.id);
 
   // Tutor updates the merged availability window via PUT /api/tutor/availability/:id (STS-12.3)
   const avId = mergedSchedule.body.availabilities[0]!.id;
-  const shiftedStart = new Date(windowStart.getTime() + 60 * 60 * 1000);
+  const shiftedStart = new Date(start.getTime() + 60 * 60 * 1000);
   const shiftedEnd = new Date(shiftedStart.getTime() + 2 * 60 * 60 * 1000);
   const updateAvRes = await apiJson<{ id: number; startTime: string; endTime: string }>(
     `/api/tutor/availability/${avId}`,
     {
       method: 'PUT',
       token: tutorToken,
-      body: {
+      body: JSON.stringify({
         startTime: shiftedStart.toISOString(),
         endTime: shiftedEnd.toISOString(),
-      },
+      }),
     },
   );
   assert.equal(updateAvRes.status, 200);
+  availabilityIds.push(updateAvRes.body.id);
   assert.equal(new Date(updateAvRes.body.startTime).getTime(), shiftedStart.getTime());
   assert.equal(new Date(updateAvRes.body.endTime).getTime(), shiftedEnd.getTime());
 });

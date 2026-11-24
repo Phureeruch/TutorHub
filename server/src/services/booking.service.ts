@@ -3,7 +3,12 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { findBookingConflict } from '../utils/booking-overlap.js';
 import { calculateBookingPrice } from '../utils/price-calculation.js';
+import {
+  calculateStudentRefund,
+  calculateTutorRefund,
+} from '../utils/refund-calculation.js';
 import { validateBookingTime } from '../utils/time.validation.js';
+import { restoreAndMergeAvailability } from './availability.service.js';
 import {
   AttachmentError,
   ALLOWED_MIME_TYPES,
@@ -381,10 +386,120 @@ export interface CancelBookingInput {
   now?: Date;
 }
 
-export async function cancelBooking(_input: CancelBookingInput): Promise<{
+async function cancelBookingAttempt(input: CancelBookingInput): Promise<{
   bookingId: number;
   refundPercentage: 100 | 50 | 0;
   refundAmount: number;
 }> {
-  throw new BookingError(500, 'Not implemented: cancelBooking');
+  const now = input.now ?? new Date();
+
+  return prisma.$transaction(
+    async (tx) => {
+      const booking = await tx.booking.findUnique({
+        where: { id: input.bookingId },
+      });
+
+      if (!booking) {
+        throw new BookingError(404, 'Booking not found.');
+      }
+
+      const isStudentOwner =
+        input.actorRole === 'STUDENT' && booking.studentId === input.actorId;
+      const isTutorOwner =
+        input.actorRole === 'TUTOR' && booking.tutorId === input.actorId;
+
+      if (!isStudentOwner && !isTutorOwner) {
+        throw new BookingError(
+          403,
+          'You are not allowed to cancel this booking.',
+        );
+      }
+
+      if (booking.status !== 'CONFIRMED') {
+        throw new BookingError(
+          409,
+          'Only confirmed bookings can be cancelled.',
+        );
+      }
+
+      if (booking.startTime.getTime() <= now.getTime()) {
+        throw new BookingError(
+          400,
+          'You can only cancel a booking before the lesson starts.',
+        );
+      }
+
+      const totalPrice = Number(booking.totalPrice);
+      const refund = isStudentOwner
+        ? calculateStudentRefund({
+            totalPrice,
+            startTime: booking.startTime,
+            now,
+          })
+        : calculateTutorRefund({
+            totalPrice,
+            startTime: booking.startTime,
+            now,
+          });
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: refund.paymentStatus,
+          cancelledBy: input.actorRole,
+          cancelledAt: now,
+          refundPercentage: refund.refundPercentage,
+          refundAmount: new Prisma.Decimal(refund.refundAmount.toFixed(2)),
+        },
+      });
+
+      // BR-13: Student cancellation restores and merges availability.
+      // BR-12: Tutor cancellation keeps the time slot permanently blocked.
+      if (isStudentOwner) {
+        await restoreAndMergeAvailability(
+          tx,
+          booking.tutorId,
+          booking.startTime,
+          booking.endTime,
+        );
+      }
+
+      return {
+        bookingId: booking.id,
+        refundPercentage: refund.refundPercentage,
+        refundAmount: refund.refundAmount,
+      };
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    },
+  );
+}
+
+export async function cancelBooking(input: CancelBookingInput): Promise<{
+  bookingId: number;
+  refundPercentage: 100 | 50 | 0;
+  refundAmount: number;
+}> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await cancelBookingAttempt(input);
+    } catch (error) {
+      if (getErrorCode(error) === 'P2034' && attempt === 0) {
+        continue;
+      }
+      if (getErrorCode(error) === 'P2034') {
+        throw new BookingError(
+          409,
+          'This booking conflicted with another update. Please try again.',
+        );
+      }
+      throw error;
+    }
+  }
+  throw new BookingError(
+    409,
+    'This booking conflicted with another update. Please try again.',
+  );
 }

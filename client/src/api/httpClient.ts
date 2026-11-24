@@ -206,8 +206,11 @@ export const httpClient = {
     })
   },
 
-  async updateAvailability(_availabilityId: number, _req: CreateAvailabilityRequest): Promise<Availability> {
-    throw new Error('Not implemented: httpClient.updateAvailability')
+  async updateAvailability(availabilityId: number, req: CreateAvailabilityRequest): Promise<Availability> {
+    return request<Availability>(`/api/tutor/availability/${availabilityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    })
   },
 
   async uploadAttachment(file: File | BookingAttachment): Promise<Required<BookingAttachment>> {
@@ -274,8 +277,11 @@ export const httpClient = {
     return request<Booking>(`/api/bookings/${bookingId}`)
   },
 
-  async cancelBooking(_bookingId: number, _reason?: string): Promise<CancelBookingResponse> {
-    throw new Error('Not implemented: httpClient.cancelBooking')
+  async cancelBooking(bookingId: number, reason?: string): Promise<CancelBookingResponse> {
+    return request<CancelBookingResponse>(`/api/bookings/${bookingId}/cancel`, {
+      method: 'PATCH',
+      body: JSON.stringify(reason !== undefined ? { reason } : {}),
+    })
   },
 
   async getAdminSummary(): Promise<AdminSummary> {
