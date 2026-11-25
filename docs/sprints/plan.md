@@ -95,14 +95,15 @@ Extend the platform with advanced discovery/filtering, full booking lifecycle ma
 - Cross-team UAT feedback triaged.
 
 ### Sprint 2 Exit Criteria
-- [ ] Students can search and filter available tutors by subject, date, and time.
-- [ ] Students can cancel a booking, and the system accurately calculates 100%, 50%, or 0% refund according to BR-11.
-- [ ] Cancelled student bookings restore availability and automatically merge adjacent time intervals.
-- [ ] Tutors can cancel bookings; student receives 100% refund and the time slot remains blocked.
-- [ ] Admin can approve pending Tutor accounts and manage the subject catalog.
-- [ ] Application is containerized with Docker, deployed to cloud infrastructure, and accessible via public URL.
-- [ ] GitHub Actions CI runs linting, build, and automated tests on every PR.
-- [ ] Sprint 3 contracts (feature SDS, AC, STS) are complete.
+- [x] Students can search and filter available tutors by subject, date, and time.
+- [x] Students can cancel a booking, and the system accurately calculates 100%, 50%, or 0% refund according to BR-11.
+- [x] Cancelled student bookings restore availability and automatically merge adjacent time intervals.
+- [x] Tutors can cancel bookings; student receives 100% refund and the time slot remains blocked.
+- [x] Admin can approve pending Tutor accounts and manage the subject catalog.
+- [x] Application is containerized with Docker, deployed to cloud infrastructure, and accessible via public URL.
+- [x] GitHub Actions CI runs linting, build, and automated tests on every PR.
+- [x] Sprint 3 contracts (feature SDS, AC, STS) are complete (`docs/sprints/sprint-3-contracts.md`).
+- [x] Meaningful Sprint 3 domain workflow implemented & verified ahead of final exams (F-16: Lesson Completion & Notes, Deliverable 2 Part C).
 
 ---
 
@@ -113,19 +114,19 @@ Complete remaining product features (lesson completion and homework notes, edita
 
 ### Features
 
-| Feature ID | Feature | Requirements Covered |
-|:---|:---|:---|
-| **F-16** | Tutor Lesson Completion & Homework Notes | FR-13, BR-14 |
-| **F-17** | Student Review Submission & In-Place Editing | FR-14, BR-14 |
-| **F-18** | Tutor Aggregate Rating Calculation & Profile Display | FR-15 |
-| **F-19** | Historical Records Audit, Regression Suite & Hardening | BR-15, NFR-04, NFR-05 |
+| Feature ID | Feature | Requirements Covered | Current Status |
+|:---|:---|:---|:---|
+| **F-16** | Tutor Lesson Completion & Homework Notes | FR-13, BR-14 | ✅ Implemented & Tested (Delivered in D2 Part C, `v2.1.0-d2-rc`) |
+| **F-17** | Student Review Submission & In-Place Editing | FR-14, BR-14 | ⏳ Planned (Target: Dec 5, 2026) |
+| **F-18** | Tutor Aggregate Rating Calculation & Profile Display | FR-15 | ⏳ Planned (Target: Dec 8, 2026) |
+| **F-19** | Historical Records Audit, Regression Suite & Hardening | BR-15, NFR-04, NFR-05 | ⏳ Planned (Target: Dec 12–13, 2026) |
 
 ### New Business Rules in Sprint 3
 - **BR-14:** Only completed lessons can be reviewed. Exactly one review per booking, which the student can edit.
 - **BR-15:** Complete audit history retention for bookings, payments, refunds, and reviews.
 
 ### Sprint 3 Exit Criteria
-- [ ] Tutors can mark appointments as completed and enter lesson notes/homework.
+- [x] Tutors can mark appointments as completed and enter lesson notes/homework (Delivered in D2 Part C).
 - [ ] Students can rate completed sessions (1–5 stars) and submit written reviews.
 - [ ] Students can edit their existing reviews.
 - [ ] Tutor profiles calculate and display average rating and review counts.
@@ -138,27 +139,27 @@ Complete remaining product features (lesson completion and homework notes, edita
 
 ## 6. Feature-to-Sprint Allocation Summary
 
-| Feature ID | Feature Name | Sprint 1 | Sprint 2 | Sprint 3 |
-|:---|:---|:---:|:---:|:---:|
-| **F-01** | User Auth, Registration & Mock Verification | ✅ | | |
-| **F-02** | Tutor Profile & Availability Periods | ✅ | | |
-| **F-03** | Student Availability Browsing & Discovery | ✅ | | |
-| **F-04** | Partial Booking, Atomic Confirmation & Price Snapshot | ✅ | | |
-| **F-05** | Student Booking Retrieval | ✅ | | |
-| **F-06** | Tutor Appointment View | ✅ | | |
-| **F-07** | Admin System-Wide Booking Overview | ✅ | | |
-| **F-08** | Database Seeding & Schema Migrations | ✅ | | |
-| **F-09** | Advanced Search & Filter (Subject, Tutor, Date) | | ✅ | |
-| **F-10** | Student Cancellation & 3-Tier Refund Engine | | ✅ | |
-| **F-11** | Tutor Cancellation Handling | | ✅ | |
-| **F-12** | Tutor Availability Editing & Interval Merging | | ✅ | |
-| **F-13** | Admin Tutor Approval & Subject Catalog | | ✅ | |
-| **F-14** | Docker Containerization & Cloud Deployment | | ✅ | |
-| **F-15** | CI/CD Pipeline (GitHub Actions) | | ✅ | |
-| **F-16** | Lesson Completion & Homework Notes | | | ✅ |
-| **F-17** | Student Review Submission & Editing | | | ✅ |
-| **F-18** | Tutor Aggregate Rating Display | | | ✅ |
-| **F-19** | Historical Records Audit & Regression Suite | | | ✅ |
+| Feature ID | Feature Name | Sprint 1 | Sprint 2 | Sprint 3 | Delivery Status |
+|:---|:---|:---:|:---:|:---:|:---|
+| **F-01** | User Auth, Registration & Mock Verification | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-02** | Tutor Profile & Availability Periods | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-03** | Student Availability Browsing & Discovery | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-04** | Partial Booking, Atomic Confirmation & Price Snapshot | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-05** | Student Booking Retrieval | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-06** | Tutor Appointment View | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-07** | Admin System-Wide Booking Overview | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-08** | Database Seeding & Schema Migrations | ✅ | | | Implemented & Tested (`v1.0.0-sprint1`) |
+| **F-09** | Advanced Search & Filter (Subject, Tutor, Date) | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-10** | Student Cancellation & 3-Tier Refund Engine | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-11** | Tutor Cancellation Handling | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-12** | Tutor Availability Editing & Interval Merging | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-13** | Admin Tutor Approval & Subject Catalog | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-14** | Docker Containerization & Cloud Deployment | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-15** | CI/CD Pipeline (GitHub Actions) | | ✅ | | Implemented & Tested (`v2.0.0-sprint2`) |
+| **F-16** | Lesson Completion & Homework Notes | | | ✅ | Implemented & Tested (D2 Part C, `v2.1.0-d2-rc`) |
+| **F-17** | Student Review Submission & Editing | | | ✅ | Planned (Target: Dec 5, 2026) |
+| **F-18** | Tutor Aggregate Rating Display | | | ✅ | Planned (Target: Dec 8, 2026) |
+| **F-19** | Historical Records Audit & Regression Suite | | | ✅ | Planned (Target: Dec 12–13, 2026) |
 
 ---
 

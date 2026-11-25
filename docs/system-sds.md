@@ -13,7 +13,7 @@ TutorHub utilizes a modern **Client-Server** architecture designed for modularit
 ```mermaid
 flowchart LR
     subgraph Client ["Client (Frontend)"]
-        UI["React 18 + Vite + TS"]
+        UI["React 19 + Vite + TS"]
         Bootstrap["Bootstrap UI Components"]
         Router["React Router"]
     end
@@ -38,7 +38,7 @@ flowchart LR
     Prisma --> Postgres
 ```
 
-* **Frontend (Client):** React 18, TypeScript, Vite, Bootstrap. Communicates with the backend exclusively via RESTful JSON APIs using bearer token authentication.
+* **Frontend (Client):** React 19, TypeScript, Vite, Bootstrap. Communicates with the backend exclusively via RESTful JSON APIs using bearer token authentication.
 * **Backend (Server):** Node.js, Express.js, TypeScript. Enforces authentication, authorization, input validation, availability interval slicing, and pricing rules.
 * **Database & ORM:** PostgreSQL managed via Prisma ORM for type-safe schema definitions, database migrations, and ACID-compliant transactional guarantees (`prisma.$transaction`).
 
@@ -197,6 +197,7 @@ model BookingAttachment {
   mimeType     String
   sizeBytes    Int
   storageKey   String   @unique
+  fileData     Bytes?   // Lab 5 DB-backed attachment storage (BYTEA)
   createdAt    DateTime @default(now())
 
   @@index([bookingId])
@@ -356,7 +357,11 @@ sequenceDiagram
 
 #### `GET /api/availability`
 * **Access:** Public / Authenticated
-* **Query Params:** `?subjectId=number&tutorId=number&date=YYYY-MM-DD&level=HIGH_SCHOOL|UNDERGRADUATE|GRADUATE`
+* **Query Params:** `?subjectId=number&tutorId=number&date=YYYY-MM-DD&level=HIGH_SCHOOL|UNDERGRADUATE|GRADUATE&startHour=HH:00|HH:30&endHour=HH:00|HH:30`
+* **Filtering & Validation (F-09, AC-09.1–AC-09.4, STS-09.1–STS-09.4):**
+  - Filters by subject ID, specific tutor ID, local calendar date (`YYYY-MM-DD` in `Asia/Bangkok`), and teaching level.
+  - Optional `startHour` and `endHour` constrain returned availability slots to windows falling entirely within the requested Bangkok time range.
+  - Validation requires `startHour` and `endHour` to fall on the `:00` or `:30` grid with `endHour > startHour` spanning at least 1 whole hour (`400 Bad Request` if malformed or reversed).
 * **Response (200):** Array of approved tutor listings `{ user, profile, subjects, availabilities }` with future bookable slots.
 
 #### `DELETE /api/tutor/availability/:id`
@@ -440,10 +445,18 @@ sequenceDiagram
 
 ### 4.5 Lesson Completion & Reviews (Sprint 3)
 
-#### `PATCH /api/bookings/:id/complete` (Korapin)
-* **Access:** Requires `TUTOR` role (Tutor ownership)
+#### `PATCH /api/bookings/:id/complete` (Korapin — Deliverable 2 Part C, F-16)
+* **Access:** Requires `TUTOR` role (ownership verified: `booking.tutorId === currentUserId`)
 * **Request:** `{ lessonSummary: string }`
-* **Response (200):** Updated booking with `status = COMPLETED`.
+* **Validation & Status Guards (FR-13, BR-14, AC-16.1–AC-16.6, STS-16.1–STS-16.5):**
+  - Actor role must be `TUTOR` and match `booking.tutorId` (`403 Forbidden` if student, admin, or unauthorized tutor).
+  - Booking must be in `CONFIRMED` status (`409 Conflict` if already `CANCELLED` or `COMPLETED`).
+  - `lessonSummary` must be a non-empty trimmed string between 1 and 2,000 characters (`400 Bad Request` if missing, whitespace-only, or > 2,000 characters).
+* **Cross-Feature Guard:**
+  - Sets `booking.status = COMPLETED` and persists `booking.lessonSummary`.
+  - Once completed, the booking is locked: subsequent `PATCH /api/bookings/:id/cancel` attempts by either Student or Tutor return `409 Conflict` ("Booking is not confirmed").
+* **Response (200):** Updated booking object with `status = "COMPLETED"`, `lessonSummary`, and related models.
+* **Errors:** `400 Bad Request` (Invalid summary), `403 Forbidden` (Role or ownership violation), `404 Not Found` (Booking does not exist), `409 Conflict` (Status is not CONFIRMED).
 
 #### `POST /api/reviews` (Phureeruch)
 * **Access:** Requires `STUDENT` role
