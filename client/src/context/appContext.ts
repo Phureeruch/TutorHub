@@ -55,6 +55,7 @@ export interface MockAppValue {
 
   createBookingWithMockPayment(req: CreateBookingRequest): Promise<Booking>
   cancelBooking(bookingId: number, reason?: string): Promise<CancelBookingResponse>
+  completeBooking(bookingId: number, lessonSummary: string): Promise<Booking>
   fetchDirectory(filters: DirectoryFilters): Promise<TutorListing[]>
   fetchBookingById(bookingId: number): Promise<Booking>
 

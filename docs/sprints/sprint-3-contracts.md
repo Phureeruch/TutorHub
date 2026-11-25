@@ -22,7 +22,7 @@ Every feature and requirement uses strict status labels that are updated only wh
 
 - **Linked Requirements:** `FR-13`, `BR-14`, `BR-15`, `NFR-01`, `NFR-02`, `NFR-04`
 - **Owner:** Korapin (Issue #6; Reviewer: Phureeruch)
-- **Current Status (as of v1.0 contract commit):** `Planned` *(Target: `Accepted` in `v2.1.0-d2-rc` by 27 Nov 2026)*
+- **Current Status:** `Tested` *(Target: `Accepted` in `v2.1.0-d2-rc` by 27 Nov 2026; unit and component STS suites passing)*
 
 ### 1. Feature SDS & Workflow
 Allows the assigned Tutor to transition a `CONFIRMED` booking to `COMPLETED` while recording a lesson summary / homework note (`lessonSummary`). Once `COMPLETED`, the booking becomes permanently non-cancellable (cross-feature guard with `F-10`/`F-11`) and becomes eligible for a Student review in `F-17` (`BR-14`).
@@ -266,7 +266,7 @@ Verifies end-to-end auditability of all booking, payment, cancellation, refund, 
 
 | Feature or Defect | Current Status (as of 2026-11-23) | Remaining Action | Owner and Target |
 |---|---|---|---|
-| **F-16** (Lesson Completion & Notes) | `Planned` — Contract, AC-16.1–16.6, STS-16.1–16.6 defined (`v1.0` contract commit) | Implement `PATCH /api/bookings/:id/complete`, cross-feature cancel block, Tutor modal & displays, and execute STS-16.1–16.6 (Issue #6) | Korapin; **27 Nov 2026** *(before Deliverable 2)* |
+| **F-16** (Lesson Completion & Notes) | `Tested` — Implementation, route/service, modal/displays, and STS-16.1–16.6 test suites verified | Create PR to `sprint-3-staging`, peer review, merge to staging and `main` for `v2.1.0-d2-rc` | Korapin; **27 Nov 2026** *(before Deliverable 2)* |
 | **F-17** (Student Reviews & Editing) | `Planned` — Contract, AC-17.1–17.5, STS-17.1–17.6 defined | Implement `POST /api/reviews`, `PUT /api/reviews/:id`, Student review/edit UI, and execute STS-17.1–17.6 | Phureeruch; **5 Dec 2026** |
 | **F-18** (Tutor Aggregate Ratings) | `Planned` — Contract, AC-18.1–18.4, STS-18.1–18.4 defined | Implement `GET /api/tutors/:id/reviews`, add `ratingSummary` to discovery API/UI, and execute STS-18.1–18.4 | Korapin; **8 Dec 2026** |
 | **F-19** (Audit, Hardening, Dark Mode & Final Release) | `Planned` — Contract, AC-19.1–19.4, STS-19.1–19.3 defined | Run full Sprint 1–3 regression & audit tests, optional Dark Mode polish, close remaining UAT items, deploy `v1.0.0-final`, record video, compile final report | Phureeruch & Korapin; **12–13 Dec 2026** |
@@ -279,3 +279,4 @@ Verifies end-to-end auditability of all booking, payment, cancellation, refund, 
 | Version | Date | Author(s) | Summary |
 |---|---|---|---|
 | 1.0 | 2026-11-23 | Korapin, Phureeruch | Initial pre-implementation Sprint 3 contracts (`F-16`–`F-19`) and bounded remaining-work plan around Dec 1–11 final exams. |
+| 1.1 | 2026-11-26 | Korapin, Phureeruch | Update F-16 status to Tested: implementation, backend route/service, UI modal, and STS-16.1–STS-16.6 suites passing on `feat/lesson-completion`. |

@@ -291,6 +291,14 @@ export const httpClient = {
     })
   },
 
+  async completeBooking(bookingId: number, lessonSummary: string): Promise<Booking> {
+    const res = await request<{ message: string; booking: Booking }>(`/api/bookings/${bookingId}/complete`, {
+      method: 'PATCH',
+      body: JSON.stringify({ lessonSummary }),
+    })
+    return res.booking
+  },
+
   async getAdminSummary(): Promise<AdminSummary> {
     return request<AdminSummary>('/api/admin/summary')
   },
