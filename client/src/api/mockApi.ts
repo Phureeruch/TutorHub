@@ -538,6 +538,48 @@ export function cancelBooking(
   }
 }
 
+/** F-16: Tutor Lesson Completion & Homework Notes */
+export function completeBooking(
+  db: MockDb,
+  actor: User,
+  bookingId: number,
+  lessonSummary: string,
+): Mutation<Booking> {
+  if (actor.role !== 'TUTOR') {
+    throw new ApiError(403, 'Only tutors can mark lessons as completed.')
+  }
+  const existing = db.bookings.find((b) => b.id === bookingId)
+  if (!existing) throw new ApiError(404, 'Booking not found.')
+  if (existing.tutorId !== actor.id) {
+    throw new ApiError(403, 'You can only complete your own appointments.')
+  }
+  if (existing.status !== 'CONFIRMED') {
+    throw new ApiError(409, 'Only confirmed bookings can be marked as completed.')
+  }
+
+  const trimmed = typeof lessonSummary === 'string' ? lessonSummary.trim() : ''
+  if (!trimmed) {
+    throw new ApiError(400, 'Enter a lesson summary or homework note.')
+  }
+  if (trimmed.length > 2000) {
+    throw new ApiError(400, 'Lesson summary must be 2000 characters or fewer.')
+  }
+
+  const updatedBooking: Booking = {
+    ...existing,
+    status: 'COMPLETED',
+    lessonSummary: trimmed,
+  }
+
+  return {
+    db: {
+      ...db,
+      bookings: db.bookings.map((b) => (b.id === existing.id ? updatedBooking : b)),
+    },
+    data: updatedBooking,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Discovery (SDS §4.2 GET /api/availability)
 // ---------------------------------------------------------------------------

@@ -66,6 +66,14 @@ export function StudentBookingsView() {
                       {formatMoney(b.refundAmount ?? 0)})
                     </p>
                   )}
+                  {b.status === 'COMPLETED' && b.lessonSummary && (
+                    <div className="mt-2 p-2 rounded border small bg-white">
+                      <strong className="d-block mb-1">Lesson notes &amp; homework:</strong>
+                      <p className="mb-0 text-muted-ink" style={{ whiteSpace: 'pre-wrap' }}>
+                        {b.lessonSummary}
+                      </p>
+                    </div>
+                  )}
                   <div className="mt-2 d-flex flex-wrap gap-2">
                     <button
                       type="button"
