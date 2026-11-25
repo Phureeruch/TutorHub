@@ -10,6 +10,11 @@ import {
 import { validateBookingTime } from '../utils/time.validation.js';
 import { restoreAndMergeAvailability } from './availability.service.js';
 import {
+  validateLessonSummary,
+  assertCanCompleteBooking,
+  LessonCompletionError,
+} from '../utils/lesson-completion.js';
+import {
   AttachmentError,
   ALLOWED_MIME_TYPES,
   MAX_ATTACHMENT_BYTES,
@@ -503,3 +508,43 @@ export async function cancelBooking(input: CancelBookingInput): Promise<{
     'This booking conflicted with another update. Please try again.',
   );
 }
+
+export interface CompleteBookingInput {
+  bookingId: number;
+  actorId: number;
+  actorRole: 'STUDENT' | 'TUTOR' | 'ADMIN';
+  lessonSummary: unknown;
+}
+
+export async function completeBooking(input: CompleteBookingInput) {
+  const summaryValidation = validateLessonSummary(input.lessonSummary);
+  if (!summaryValidation.valid) {
+    throw new BookingError(400, summaryValidation.reason);
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: input.bookingId },
+  });
+
+  if (!booking) {
+    throw new BookingError(404, 'Booking not found.');
+  }
+
+  try {
+    assertCanCompleteBooking(booking, input.actorId, input.actorRole);
+  } catch (error) {
+    if (error instanceof LessonCompletionError) {
+      throw new BookingError(error.statusCode, error.message);
+    }
+    throw error;
+  }
+
+  return prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      status: 'COMPLETED',
+      lessonSummary: summaryValidation.trimmed,
+    },
+  });
+}
+

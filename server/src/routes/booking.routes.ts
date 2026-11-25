@@ -5,6 +5,7 @@ import { authenticate, type AuthenticatedUser } from '../middleware/auth.js';
 import {
   BookingError,
   cancelBooking,
+  completeBooking,
   createBooking,
 } from '../services/booking.service.js';
 
@@ -302,6 +303,54 @@ router.patch('/:id/cancel', async (req: Request, res: Response) => {
       return;
     }
     res.status(500).json({ message: 'Unable to cancel booking.' });
+  }
+});
+
+// PATCH /api/bookings/:id/complete
+// Assigned Tutor marks a confirmed booking as COMPLETED and records lessonSummary (F-16).
+router.patch('/:id/complete', async (req: Request, res: Response) => {
+  const user = getAuthenticatedUser(res);
+  if (!user) {
+    res.status(401).json({ message: 'Authentication required.' });
+    return;
+  }
+
+  const bookingId = Number(req.params.id);
+  if (!Number.isInteger(bookingId) || bookingId <= 0) {
+    res.status(404).json({ message: 'Booking not found.' });
+    return;
+  }
+
+  const { lessonSummary } = req.body ?? {};
+
+  try {
+    const updated = await completeBooking({
+      bookingId,
+      actorId: user.id,
+      actorRole: user.role,
+      lessonSummary,
+    });
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: updated.id },
+      include: bookingInclude,
+    });
+
+    if (!booking) {
+      res.status(500).json({ message: 'Unable to retrieve completed booking.' });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Lesson marked as completed.',
+      booking: toBookingDto(booking),
+    });
+  } catch (error) {
+    if (error instanceof BookingError) {
+      res.status(error.statusCode).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: 'Unable to mark lesson as completed.' });
   }
 });
 

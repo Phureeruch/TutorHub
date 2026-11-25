@@ -11,6 +11,7 @@ import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
 import { CancelBookingModal } from '../ui/CancelBookingModal'
+import { CompleteLessonModal } from '../ui/CompleteLessonModal'
 import { EmptyStateArt } from '../ui/Illustrations'
 import { Modal } from '../ui/Modal'
 import { BookingStatusTags, PriceSnapshot } from '../ui/PriceSnapshot'
@@ -632,6 +633,7 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
   const bookings = listBookings(db, tutor)
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null)
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null)
+  const [completingBooking, setCompletingBooking] = useState<Booking | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   return (
     <>
@@ -656,6 +658,7 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
         <ol className="th-booking-list">
           {bookings.map((b) => {
             const canCancel = b.status === 'CONFIRMED' && new Date(b.startTime).getTime() > now.getTime()
+            const canComplete = b.status === 'CONFIRMED'
             return (
               <li key={b.id} className="th-booking">
                 <div className="th-booking-when">
@@ -674,6 +677,14 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
                       {formatMoney(b.refundAmount ?? 0)})
                     </p>
                   )}
+                  {b.status === 'COMPLETED' && b.lessonSummary && (
+                    <div className="mt-2 p-2 rounded border small bg-white">
+                      <strong className="d-block mb-1">Lesson notes &amp; homework:</strong>
+                      <p className="mb-0 text-muted-ink" style={{ whiteSpace: 'pre-wrap' }}>
+                        {b.lessonSummary}
+                      </p>
+                    </div>
+                  )}
                   <div className="mt-2 d-flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -683,6 +694,16 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
                     >
                       Details
                     </button>
+                    {canComplete && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-ink btn-sm"
+                        aria-label={`Complete lesson #${b.id}`}
+                        onClick={() => setCompletingBooking(b)}
+                      >
+                        Complete lesson
+                      </button>
+                    )}
                     {canCancel && (
                       <button
                         type="button"
@@ -721,6 +742,16 @@ function AppointmentsSection({ tutor }: { tutor: User }) {
             setNotice(
               `Cancelled appointment #${res.booking.id}. Student refunded 100% (${formatMoney(res.refundAmount)}).`,
             )
+          }}
+        />
+      )}
+      {completingBooking !== null && (
+        <CompleteLessonModal
+          booking={completingBooking}
+          onClose={() => setCompletingBooking(null)}
+          onCompleted={(updated) => {
+            setCompletingBooking(null)
+            setNotice(`Lesson #${updated.id} marked as completed. Summary notes saved.`)
           }}
         />
       )}
