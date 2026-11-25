@@ -24,7 +24,8 @@ describe('route guard (FR-03, BR-03)', () => {
   it('sends a newly signed-in tutor to their dashboard', async () => {
     const user = userEvent.setup()
     renderAppAt('/login', null)
-    await user.click(screen.getByRole('button', { name: "Fill in Alice's credentials" }))
+    await user.type(await screen.findByLabelText('Email'), 'alice@tutorhub.dev')
+    await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Availability' })).toBeTruthy()
     expect(window.location.pathname).toBe('/tutor/dashboard')
@@ -419,10 +420,25 @@ describe('review fixes: headings, filters and field states', () => {
 })
 
 describe('auth view layout and validation (F-01, UI/UX)', () => {
-  it('renders a centered login card without the marketing intro section', async () => {
+  it('renders a centered login card without the marketing intro or seed accounts section, while keeping demo controls', async () => {
     renderAppAt('/login', null)
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeTruthy()
     expect(screen.queryByText(/Book an hour with a tutor from your school/i)).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Seed accounts' })).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Demo controls' })).toBeTruthy()
+  })
+
+  it('toggles password visibility with the eye icon button on login and registration forms', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/login', null)
+    const passwordInput = (await screen.findByLabelText('Password')) as HTMLInputElement
+    expect(passwordInput.type).toBe('password')
+
+    await user.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(passwordInput.type).toBe('text')
+
+    await user.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(passwordInput.type).toBe('password')
   })
 
   it('marks the password input aria-invalid and focuses it when registering with a short password', async () => {
@@ -452,5 +468,56 @@ describe('auth view layout and validation (F-01, UI/UX)', () => {
     expect(alert.textContent).toBe('Enter your name.')
     expect(fullName.getAttribute('aria-invalid')).toBe('true')
     expect(document.activeElement).toBe(fullName)
+  })
+})
+
+describe('booking cancellation, 3-tier refund preview, tutor cancellation & availability edit UI (F-10, F-11, F-12, STS-10.7, STS-11.4)', () => {
+  it('shows 50% refund preview when student cancels a booking 24–72h out and restores merged availability', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/student/bookings', SEED.CHARLIE)
+
+    const cancelButtons = await screen.findAllByRole('button', { name: /^Cancel booking #/ })
+    await user.click(cancelButtons[0])
+
+    const dialog = screen.getByRole('dialog', { name: /Cancel booking #1/i })
+    expect(within(dialog).getByText(/50%/i)).toBeTruthy()
+    expect(within(dialog).getByText(/฿200/)).toBeTruthy()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm cancellation' }))
+
+    expect(await screen.findByText('Cancelled')).toBeTruthy()
+    expect(screen.getByText(/Partly refunded/)).toBeTruthy()
+  })
+
+  it('warns tutor that student receives 100% refund and slot remains blocked on tutor cancellation', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/tutor/appointments', SEED.ALICE)
+
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel appointment #1' })
+    await user.click(cancelBtn)
+
+    const dialog = screen.getByRole('dialog', { name: /Cancel appointment #1/i })
+    expect(within(dialog).getByText(/100% refund/i)).toBeTruthy()
+    expect(within(dialog).getByText(/remain blocked/i)).toBeTruthy()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm cancellation' }))
+
+    expect(await screen.findByText('Cancelled')).toBeTruthy()
+    expect(screen.getByText('Refunded')).toBeTruthy()
+  })
+
+  it('lets a tutor edit an existing open availability window', async () => {
+    const user = userEvent.setup()
+    renderAppAt('/tutor/dashboard', SEED.ALICE)
+
+    const editButtons = await screen.findAllByRole('button', { name: /^Edit / })
+    await user.click(editButtons[0])
+
+    const dialog = screen.getByRole('dialog', { name: /Edit open window/i })
+    const lengthSelect = within(dialog).getByLabelText('Length')
+    await user.selectOptions(lengthSelect, '2')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText(/Updated window/i)).toBeTruthy()
   })
 })

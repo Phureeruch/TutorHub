@@ -381,4 +381,135 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   assert.ok(summaryRes.body.totalBookings >= 1);
   assert.ok(summaryRes.body.verifiedStudents >= 2);
   assert.ok(summaryRes.body.totalStudents >= summaryRes.body.verifiedStudents);
+
+  // Confirmed booking schedule cannot be modified via PUT /api/bookings/:id (BR-10, STS-10.6)
+  const mutateBooking = await apiJson(`/api/bookings/${bookingRes.body.id}`, {
+    method: 'PUT',
+    token: studentToken,
+    body: JSON.stringify({ durationHours: 2 }),
+  });
+  assert.equal(mutateBooking.status, 404);
+
+  // Stranger student cannot cancel someone else's booking (403, STS-10.5)
+  const strangerCancel = await apiJson<{ message: string }>(
+    `/api/bookings/${bookingRes.body.id}/cancel`,
+    {
+      method: 'PATCH',
+      token: otherToken,
+      body: JSON.stringify({}),
+    },
+  );
+  assert.equal(strangerCancel.status, 403);
+
+  // Student cancels own booking (< 24h away -> 0% refund) and merges availability (STS-10.2, STS-10.3, STS-12.2)
+  const cancelRes = await apiJson<{
+    message: string;
+    refundPercentage: number;
+    refundAmount: number;
+    booking: {
+      id: number;
+      status: string;
+      paymentStatus: string;
+      cancelledBy: string;
+      refundPercentage: number;
+      refundAmount: number;
+    };
+  }>(`/api/bookings/${bookingRes.body.id}/cancel`, {
+    method: 'PATCH',
+    token: studentToken,
+    body: JSON.stringify({ reason: 'Schedule conflict' }),
+  });
+  assert.equal(cancelRes.status, 200);
+  assert.equal(cancelRes.body.refundPercentage, 0);
+  assert.equal(cancelRes.body.refundAmount, 0);
+  assert.equal(cancelRes.body.booking.status, 'CANCELLED');
+  assert.equal(cancelRes.body.booking.paymentStatus, 'SUCCESS');
+  assert.equal(cancelRes.body.booking.cancelledBy, 'STUDENT');
+
+  // Re-cancelling an already-cancelled booking returns 409 (STS-10.4)
+  const cancelAgain = await apiJson<{ message: string }>(
+    `/api/bookings/${bookingRes.body.id}/cancel`,
+    {
+      method: 'PATCH',
+      token: studentToken,
+      body: JSON.stringify({}),
+    },
+  );
+  assert.equal(cancelAgain.status, 409);
+
+  // Tutor schedule now shows the two slices merged back into 1 continuous availability window (STS-12.2)
+  const mergedSchedule = await apiJson<{
+    availabilities: { id: number; startTime: string; endTime: string }[];
+  }>('/api/tutor/availability', { token: tutorToken });
+  assert.equal(mergedSchedule.status, 200);
+  assert.equal(mergedSchedule.body.availabilities.length, 1);
+  availabilityIds.push(mergedSchedule.body.availabilities[0]!.id);
+
+  // Tutor updates the merged availability window via PUT /api/tutor/availability/:id (STS-12.3)
+  const avId = mergedSchedule.body.availabilities[0]!.id;
+  const shiftedStart = new Date(start.getTime() + 60 * 60 * 1000);
+  const shiftedEnd = new Date(shiftedStart.getTime() + 2 * 60 * 60 * 1000);
+  const updateAvRes = await apiJson<{ id: number; startTime: string; endTime: string }>(
+    `/api/tutor/availability/${avId}`,
+    {
+      method: 'PUT',
+      token: tutorToken,
+      body: JSON.stringify({
+        startTime: shiftedStart.toISOString(),
+        endTime: shiftedEnd.toISOString(),
+      }),
+    },
+  );
+  assert.equal(updateAvRes.status, 200);
+  availabilityIds.push(updateAvRes.body.id);
+  assert.equal(new Date(updateAvRes.body.startTime).getTime(), shiftedStart.getTime());
+  assert.equal(new Date(updateAvRes.body.endTime).getTime(), shiftedEnd.getTime());
+
+  // F-09: Discovery time window validation (STS-09.4)
+  const badFilterRes1 = await apiJson<{ message: string }>(
+    '/api/availability?startHour=15:00&endHour=14:00',
+  );
+  assert.equal(badFilterRes1.status, 400);
+  assert.equal(badFilterRes1.body.message, 'End time must be at least 1 hour after start time.');
+
+  const badFilterRes2 = await apiJson<{ message: string }>(
+    '/api/availability?startHour=09:15',
+  );
+  assert.equal(badFilterRes2.status, 400);
+  assert.equal(badFilterRes2.body.message, 'Invalid discovery filters.');
+
+  // F-13: Student and Tutor cannot access Admin endpoints (403 Forbidden, STS-13.4)
+  const studentPending = await apiJson('/api/admin/tutors/pending', { token: studentToken });
+  assert.equal(studentPending.status, 403);
+
+  const tutorSubjectPost = await apiJson('/api/admin/subjects', {
+    method: 'POST',
+    token: tutorToken,
+    body: JSON.stringify({ name: 'Hacking 101' }),
+  });
+  assert.equal(tutorSubjectPost.status, 403);
+
+  // F-13: Admin can list pending tutors (STS-13.1)
+  const adminPending = await apiJson<{ id: number; name: string }[]>('/api/admin/tutors/pending', {
+    token: adminToken,
+  });
+  assert.equal(adminPending.status, 200);
+  assert.ok(Array.isArray(adminPending.body));
+
+  // F-13: Admin approving unknown tutor returns 404 (STS-13.2)
+  const unknownApprove = await apiJson<{ message: string }>('/api/admin/tutors/999999/approve', {
+    method: 'PATCH',
+    token: adminToken,
+  });
+  assert.equal(unknownApprove.status, 404);
+  assert.equal(unknownApprove.body.message, 'Tutor account not found.');
+
+  // F-13: Admin duplicate subject returns 409 (STS-13.3)
+  const dupSubject = await apiJson<{ message: string }>('/api/admin/subjects', {
+    method: 'POST',
+    token: adminToken,
+    body: JSON.stringify({ name: 'python basics' }),
+  });
+  assert.equal(dupSubject.status, 409);
+  assert.equal(dupSubject.body.message, 'A subject with this name already exists.');
 });

@@ -10,25 +10,32 @@ import type {
   Availability,
   Booking,
   BookingAttachment,
+  CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
+  CreateSubjectRequest,
   MockDb,
+  PendingTutor,
   RegisterRequest,
   Subject,
   TaughtSubjectInput,
   TeachingLevel,
   TutorProfile,
   TutorSubject,
+  UpdateSubjectRequest,
   UpdateTutorProfileRequest,
   User,
 } from '../types/types'
 import {
+  calculateStudentRefund,
   calculateTotalPrice,
   getValidStartSlots,
   hasBookingOverlap,
   HOUR_MS,
   isAlignedBookingStart,
+  isSlotInTimeWindow,
   isWithin,
+  mergeAdjacentAvailabilities,
   sliceAvailabilityAfterBooking,
   validateAvailabilityInput,
 } from '../utils/bookingRules'
@@ -224,6 +231,9 @@ export function createAvailability(
   now: Date,
 ): Mutation<Availability> {
   requireRole(actor, 'TUTOR')
+  if (!actor.isApproved) {
+    throw new ApiError(403, 'Your tutor account is pending administrator approval.')
+  }
   const start = new Date(req.startTime)
   const end = new Date(req.endTime)
   const validation = validateAvailabilityInput(start, end, now)
@@ -241,21 +251,20 @@ export function createAvailability(
   }
 
   const stamp = now.toISOString()
-  const availability: Availability = {
-    id: db.nextIds.availability,
-    tutorId: actor.id,
-    startTime: start.toISOString(),
-    endTime: end.toISOString(),
-    createdAt: stamp,
-    updatedAt: stamp,
-  }
+  const { availabilities, merged, nextAvailabilityId } = mergeAdjacentAvailabilities(
+    db.availabilities,
+    actor.id,
+    { start, end },
+    db.nextIds.availability,
+    stamp,
+  )
   return {
     db: {
       ...db,
-      availabilities: [...db.availabilities, availability],
-      nextIds: { ...db.nextIds, availability: availability.id + 1 },
+      availabilities,
+      nextIds: { ...db.nextIds, availability: nextAvailabilityId },
     },
-    data: availability,
+    data: merged,
   }
 }
 
@@ -269,6 +278,56 @@ export function deleteAvailability(db: MockDb, actor: User, availabilityId: numb
   if (!target) throw new ApiError(404, 'Availability period not found.')
   if (target.tutorId !== actor.id) throw new ApiError(403, 'You can only remove your own availability.')
   return { db: { ...db, availabilities: db.availabilities.filter((a) => a.id !== availabilityId) }, data: null }
+}
+
+export function updateAvailability(
+  db: MockDb,
+  actor: User,
+  availabilityId: number,
+  req: CreateAvailabilityRequest,
+  now: Date,
+): Mutation<Availability> {
+  requireRole(actor, 'TUTOR')
+  if (!actor.isApproved) {
+    throw new ApiError(403, 'Your tutor account is pending administrator approval.')
+  }
+  const target = db.availabilities.find((a) => a.id === availabilityId)
+  if (!target) throw new ApiError(404, 'Availability not found.')
+  if (target.tutorId !== actor.id) throw new ApiError(403, 'You can only edit your own availability.')
+
+  const start = new Date(req.startTime)
+  const end = new Date(req.endTime)
+  const validation = validateAvailabilityInput(start, end, now)
+  if (!validation.ok) throw new ApiError(400, validation.error)
+
+  const others = db.availabilities.filter((a) => a.id !== availabilityId)
+  if (others.some((a) => a.tutorId === actor.id && rangesOverlap(a.startTime, a.endTime, start, end))) {
+    throw new ApiError(400, 'This overlaps availability you already offer.')
+  }
+  if (
+    db.bookings.some(
+      (b) => b.tutorId === actor.id && b.status !== 'CANCELLED' && rangesOverlap(b.startTime, b.endTime, start, end),
+    )
+  ) {
+    throw new ApiError(400, 'This overlaps a lesson that is already booked.')
+  }
+
+  const stamp = now.toISOString()
+  const { availabilities, merged, nextAvailabilityId } = mergeAdjacentAvailabilities(
+    others,
+    actor.id,
+    { start, end },
+    db.nextIds.availability,
+    stamp,
+  )
+  return {
+    db: {
+      ...db,
+      availabilities,
+      nextIds: { ...db.nextIds, availability: nextAvailabilityId },
+    },
+    data: merged,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -397,6 +456,88 @@ export function getBookingById(db: MockDb, actor: User, bookingId: number): Book
   return booking
 }
 
+export function cancelBooking(
+  db: MockDb,
+  actor: User,
+  bookingId: number,
+  now: Date,
+  reason?: string,
+): Mutation<CancelBookingResponse> {
+  const existing = db.bookings.find((b) => b.id === bookingId)
+  if (!existing) throw new ApiError(404, 'Booking not found.')
+
+  const isStudentOwner = actor.role === 'STUDENT' && existing.studentId === actor.id
+  const isTutorOwner = actor.role === 'TUTOR' && existing.tutorId === actor.id
+  if (!isStudentOwner && !isTutorOwner) {
+    throw new ApiError(403, 'You are not allowed to cancel this booking.')
+  }
+
+  if (existing.status !== 'CONFIRMED') {
+    throw new ApiError(409, 'Only confirmed bookings can be cancelled.')
+  }
+
+  const start = new Date(existing.startTime)
+  const end = new Date(existing.endTime)
+  if (start.getTime() <= now.getTime()) {
+    throw new ApiError(400, 'You can only cancel a booking before the lesson starts.')
+  }
+
+  if (reason !== undefined && reason.trim().length > 300) {
+    throw new ApiError(400, 'Invalid cancellation reason.')
+  }
+
+  const refund = isStudentOwner
+    ? calculateStudentRefund(existing.totalPrice, start, now)
+    : {
+        refundPercentage: 100 as const,
+        refundAmount: existing.totalPrice,
+        paymentStatus: 'REFUNDED_FULL' as const,
+      }
+
+  const stamp = now.toISOString()
+  const updatedBooking: Booking = {
+    ...existing,
+    status: 'CANCELLED',
+    paymentStatus: refund.paymentStatus,
+    cancelledBy: actor.role,
+    cancelledAt: stamp,
+    refundPercentage: refund.refundPercentage,
+    refundAmount: refund.refundAmount,
+    updatedAt: stamp,
+  }
+
+  let nextAvailabilities = db.availabilities
+  let nextAvailabilityId = db.nextIds.availability
+  // BR-13: Student cancellation restores and merges availability.
+  // BR-12: Tutor cancellation keeps the time slot blocked.
+  if (isStudentOwner) {
+    const mergedResult = mergeAdjacentAvailabilities(
+      db.availabilities,
+      existing.tutorId,
+      { start, end },
+      db.nextIds.availability,
+      stamp,
+    )
+    nextAvailabilities = mergedResult.availabilities
+    nextAvailabilityId = mergedResult.nextAvailabilityId
+  }
+
+  return {
+    db: {
+      ...db,
+      bookings: db.bookings.map((b) => (b.id === existing.id ? updatedBooking : b)),
+      availabilities: nextAvailabilities,
+      nextIds: { ...db.nextIds, availability: nextAvailabilityId },
+    },
+    data: {
+      message: 'Booking cancelled successfully.',
+      refundPercentage: refund.refundPercentage,
+      refundAmount: refund.refundAmount,
+      booking: updatedBooking,
+    },
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Discovery (SDS §4.2 GET /api/availability)
 // ---------------------------------------------------------------------------
@@ -419,11 +560,13 @@ export interface TutorDirectoryFilter {
    * Not in SDS §4.2's query params yet (backend-api-guide.md §5.2).
    */
   level?: TeachingLevel
+  startHour?: string
+  endHour?: string
 }
 
 export function listTutorDirectory(
   db: MockDb,
-  { now, subjectId, tutorId, date, level }: TutorDirectoryFilter,
+  { now, subjectId, tutorId, date, level, startHour, endHour }: TutorDirectoryFilter,
 ): TutorListing[] {
   return db.users
     .filter((u) => u.role === 'TUTOR' && u.isApproved && (tutorId === undefined || u.id === tutorId))
@@ -437,10 +580,16 @@ export function listTutorDirectory(
           profile,
           subjects: subjectsOfTutor(db, user.id),
           availabilities: db.availabilities
-            .filter(
-              (a) =>
-                a.tutorId === user.id && getValidStartSlots(a, now).length > 0 && (!date || dayKey(a.startTime) === date),
-            )
+            .filter((a) => {
+              if (a.tutorId !== user.id) return false
+              const validSlots = getValidStartSlots(a, now)
+              if (validSlots.length === 0) return false
+              if (date && dayKey(a.startTime) !== date) return false
+              if (startHour || endHour) {
+                return validSlots.some((slot) => isSlotInTimeWindow(slot, startHour, endHour))
+              }
+              return true
+            })
             .sort(byStartTime),
         },
       ]
@@ -452,6 +601,114 @@ export function listTutorDirectory(
           (s) => (subjectId === undefined || s.id === subjectId) && (level === undefined || s.levels.includes(level)),
         ),
     )
-    // Searching by date means "who can I book that day": tutors with nothing open drop out.
-    .filter((t) => !date || t.availabilities.length > 0)
+    // Searching by date or time window means "who can I book that day/time": tutors with nothing open drop out.
+    .filter((t) => (!date && !startHour && !endHour) || t.availabilities.length > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Admin (F-13)
+// ---------------------------------------------------------------------------
+
+export function getPendingTutors(db: MockDb, actor: User): PendingTutor[] {
+  requireRole(actor, 'ADMIN')
+  return db.users
+    .filter((u) => u.role === 'TUTOR' && !u.isApproved)
+    .map((u) => {
+      const profile = db.tutorProfiles.find((p) => p.userId === u.id)
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        isApproved: u.isApproved,
+        createdAt: u.createdAt,
+        bio: profile?.bio ?? null,
+      }
+    })
+}
+
+export function approveTutor(db: MockDb, actor: User, tutorId: number): Mutation<User> {
+  requireRole(actor, 'ADMIN')
+  const tutor = db.users.find((u) => u.id === tutorId)
+  if (!tutor || tutor.role !== 'TUTOR') {
+    throw new ApiError(404, 'Tutor not found.')
+  }
+  const updated: User = {
+    ...tutor,
+    isApproved: true,
+    updatedAt: new Date().toISOString(),
+  }
+  return {
+    db: {
+      ...db,
+      users: db.users.map((u) => (u.id === tutorId ? updated : u)),
+    },
+    data: updated,
+  }
+}
+
+export function createSubject(db: MockDb, actor: User, req: CreateSubjectRequest): Mutation<Subject> {
+  requireRole(actor, 'ADMIN')
+  const name = req.name ? req.name.trim() : ''
+  if (name.length < 2 || name.length > 80) {
+    throw new ApiError(400, 'Subject name must be between 2 and 80 characters.')
+  }
+  const desc = req.description ? req.description.trim() : null
+  if (desc && desc.length > 300) {
+    throw new ApiError(400, 'Description cannot exceed 300 characters.')
+  }
+  if (db.subjects.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
+    throw new ApiError(409, 'A subject with this name already exists.')
+  }
+  const nextId = Math.max(0, ...db.subjects.map((s) => s.id)) + 1
+  const stamp = new Date().toISOString()
+  const subject: Subject = {
+    id: nextId,
+    name,
+    description: desc,
+    createdAt: stamp,
+  }
+  return {
+    db: {
+      ...db,
+      subjects: [...db.subjects, subject],
+    },
+    data: subject,
+  }
+}
+
+export function updateSubject(
+  db: MockDb,
+  actor: User,
+  subjectId: number,
+  req: UpdateSubjectRequest,
+): Mutation<Subject> {
+  requireRole(actor, 'ADMIN')
+  const existing = db.subjects.find((s) => s.id === subjectId)
+  if (!existing) {
+    throw new ApiError(404, 'Subject not found.')
+  }
+  const name = req.name ? req.name.trim() : ''
+  if (name.length < 2 || name.length > 80) {
+    throw new ApiError(400, 'Subject name must be between 2 and 80 characters.')
+  }
+  const desc = req.description !== undefined ? (req.description ? req.description.trim() : null) : existing.description
+  if (desc && desc.length > 300) {
+    throw new ApiError(400, 'Description cannot exceed 300 characters.')
+  }
+  if (db.subjects.some((s) => s.id !== subjectId && s.name.toLowerCase() === name.toLowerCase())) {
+    throw new ApiError(409, 'A subject with this name already exists.')
+  }
+  const updated: Subject = {
+    ...existing,
+    name,
+    description: desc,
+  }
+  return {
+    db: {
+      ...db,
+      subjects: db.subjects.map((s) => (s.id === subjectId ? updated : s)),
+    },
+    data: updated,
+  }
 }

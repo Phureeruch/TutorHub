@@ -3,12 +3,16 @@ import { ApiError, listBookings, MAX_TOPICS_LENGTH, subjectsOfTutor } from '../.
 import { useCurrentUser, useMockApp } from '../../context/appContext'
 import { useFieldError } from '../../hooks/useFieldError'
 import { useNow } from '../../hooks/useNow'
-import type { TeachingLevel, TutorProfile, User } from '../../types/types'
-import { CURRENCY_SYMBOL, formatDay, formatHours, formatRate, formatTimeRange, toDateInputValue } from '../../utils/format'
+import type { Availability, Booking, TeachingLevel, TutorProfile, User } from '../../types/types'
+import { HOUR_MS } from '../../utils/bookingRules'
+import { CURRENCY_SYMBOL, formatDay, formatHours, formatMoney, formatRate, formatTimeRange, toDateInputValue } from '../../utils/format'
 import { LEVEL_LABEL, orderLevels, TEACHING_LEVELS } from '../../utils/levels'
 import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
 import { AppLink } from '../ui/AppLink'
 import { BookingDetailModal } from '../ui/BookingDetailModal'
+import { CancelBookingModal } from '../ui/CancelBookingModal'
+import { EmptyStateArt } from '../ui/Illustrations'
+import { Modal } from '../ui/Modal'
 import { BookingStatusTags, PriceSnapshot } from '../ui/PriceSnapshot'
 import { TimeTrack } from '../ui/TimeTrack'
 import { buildAvailabilityRequest, groupScheduleByDay } from './tutorSchedule'
@@ -24,6 +28,147 @@ const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : 'So
 // Section B: availability creator + schedule (FR-06, BR-04)
 // ---------------------------------------------------------------------------
 
+function EditAvailabilityModal({
+  availability,
+  onClose,
+  onUpdated,
+}: {
+  availability: Availability
+  onClose(): void
+  onUpdated(updated: Availability): void
+}) {
+  const { updateAvailability } = useMockApp()
+  const now = useNow()
+  const initialStart = new Date(availability.startTime)
+  const initialHours = Math.max(
+    1,
+    Math.round((new Date(availability.endTime).getTime() - initialStart.getTime()) / HOUR_MS),
+  )
+
+  const [date, setDate] = useState(() => toDateInputValue(initialStart))
+  const [hour, setHour] = useState(() => initialStart.getHours())
+  const [minute, setMinute] = useState<0 | 30>(() => (initialStart.getMinutes() === 30 ? 30 : 0))
+  const [duration, setDuration] = useState(() => initialHours)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const request = buildAvailabilityRequest(date, hour, minute, duration)
+
+  const handleSave = async (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    if (!request) {
+      setError('Choose a valid date.')
+      return
+    }
+    setSaving(true)
+    try {
+      const updated = await updateAvailability(availability.id, request)
+      onUpdated(updated)
+    } catch (err) {
+      setError(messageOf(err))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      title="Edit open window"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-outline-ink" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" form="edit-av-form" className="btn btn-ink" disabled={saving}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </>
+      }
+    >
+      <form id="edit-av-form" onSubmit={(e) => void handleSave(e)} noValidate>
+        <div className="row g-3">
+          <div className="col-sm-6">
+            <label className="form-label" htmlFor="edit-av-date">
+              Date
+            </label>
+            <input
+              id="edit-av-date"
+              type="date"
+              className="form-control"
+              min={toDateInputValue(now)}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
+          </div>
+          <div className="col-6 col-sm-3">
+            <label className="form-label" htmlFor="edit-av-hour">
+              Start hour
+            </label>
+            <select
+              id="edit-av-hour"
+              className="form-select"
+              value={hour}
+              onChange={(e) => setHour(Number(e.target.value))}
+            >
+              {HOURS.map((h) => (
+                <option key={h} value={h}>
+                  {pad(h)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-6 col-sm-3">
+            <label className="form-label" htmlFor="edit-av-duration">
+              Length
+            </label>
+            <select
+              id="edit-av-duration"
+              className="form-select"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+            >
+              {DURATIONS.map((h) => (
+                <option key={h} value={h}>
+                  {formatHours(h)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <fieldset className="col-12">
+            <legend className="form-label fs-6">Minutes</legend>
+            <div className="d-flex gap-2">
+              {([0, 30] as const).map((m) => (
+                <label key={m} className="th-pill th-pill-radio">
+                  <input
+                    type="radio"
+                    name="edit-av-minute"
+                    className="visually-hidden"
+                    checked={minute === m}
+                    onChange={() => setMinute(m)}
+                  />
+                  :{pad(m)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        {request && (
+          <p className="form-text mb-0 mt-3">
+            {formatDay(request.startTime)}, {formatTimeRange(request.startTime, request.endTime)}
+          </p>
+        )}
+        {error && (
+          <div className="th-notice th-notice-error mt-3" role="alert">
+            {error}
+          </div>
+        )}
+      </form>
+    </Modal>
+  )
+}
+
 function AvailabilitySection({ tutor }: { tutor: User }) {
   const { db, createAvailability, deleteAvailability } = useMockApp()
   const now = useNow()
@@ -34,6 +179,7 @@ function AvailabilitySection({ tutor }: { tutor: User }) {
   const [minute, setMinute] = useState<0 | 30>(0)
   const [duration, setDuration] = useState(2)
   const [notice, setNotice] = useState<string | null>(null)
+  const [editingAvailability, setEditingAvailability] = useState<Availability | null>(null)
   const dateRef = useRef<HTMLInputElement>(null)
   const { error, setError, fail, invalidProps, clearField } = useFieldError({ date: dateRef })
 
@@ -173,7 +319,10 @@ function AvailabilitySection({ tutor }: { tutor: User }) {
           Blue is open for booking. Hatched time is booked; it was cut out of the window it came from.
         </p>
         {days.length === 0 ? (
-          <div className="th-empty">No windows yet. Add one above so students can book you.</div>
+          <div className="th-empty">
+            <EmptyStateArt kind="schedule" />
+            <p className="mb-0">No windows yet. Add one above so students can book you.</p>
+          </div>
         ) : (
           <ol className="th-schedule">
             {days.map((day) => (
@@ -187,6 +336,14 @@ function AvailabilitySection({ tutor }: { tutor: User }) {
                       return (
                         <li key={a.id} className="th-window-chip">
                           <span>{label}</span>
+                          <button
+                            type="button"
+                            className="btn-link-ink small"
+                            onClick={() => setEditingAvailability(a)}
+                            aria-label={`Edit ${formatDay(a.startTime)} ${label}`}
+                          >
+                            Edit
+                          </button>
                           <button
                             type="button"
                             className="btn-link-ink small"
@@ -205,6 +362,18 @@ function AvailabilitySection({ tutor }: { tutor: User }) {
           </ol>
         )}
       </section>
+
+      {editingAvailability !== null && (
+        <EditAvailabilityModal
+          availability={editingAvailability}
+          onClose={() => setEditingAvailability(null)}
+          onUpdated={(updated) => {
+            setEditingAvailability(null)
+            setError(null)
+            setNotice(`Updated window to ${formatDay(updated.startTime)}, ${formatTimeRange(updated.startTime, updated.endTime)}.`)
+          }}
+        />
+      )}
     </>
   )
 }
@@ -436,7 +605,9 @@ function ProfileSection({ tutor }: { tutor: User }) {
   return (
     <>
       <header className="th-page-header">
-        <h1>Profile & rate</h1>
+        <h1>
+          Profile &amp; <span className="th-accent-text">rate</span>
+        </h1>
         <p>What students see when they choose a tutor.</p>
       </header>
       {profile ? (
@@ -457,53 +628,101 @@ function ProfileSection({ tutor }: { tutor: User }) {
 
 function AppointmentsSection({ tutor }: { tutor: User }) {
   const { db } = useMockApp()
+  const now = useNow()
   const bookings = listBookings(db, tutor)
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null)
+  const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   return (
     <>
       <header className="th-page-header">
         <h1>Appointments</h1>
         <p>Lessons students have booked with you. Prices are the ones paid at booking time.</p>
       </header>
+      {notice && (
+        <div className="th-notice th-notice-success mb-3" role="status">
+          {notice}
+        </div>
+      )}
       {bookings.length === 0 ? (
         <div className="th-empty">
-          <p className="mb-2">No lessons booked yet. Students can book once you have open windows.</p>
+          <EmptyStateArt kind="bookings" />
+          <p className="mb-1">No lessons booked yet. Students can book once you have open windows.</p>
           <AppLink to="/tutor/dashboard" className="btn btn-ink btn-sm">
             Add availability
           </AppLink>
         </div>
       ) : (
         <ol className="th-booking-list">
-          {bookings.map((b) => (
-            <li key={b.id} className="th-booking">
-              <div className="th-booking-when">
-                <strong>{formatDay(b.startTime)}</strong>
-                <span>{formatTimeRange(b.startTime, b.endTime)}</span>
-                <span className="text-muted-ink small">{formatHours(b.durationHours)}</span>
-              </div>
-              <div className="th-booking-what">
-                <h2 className="h3 mb-1">{userNameOf(db, b.studentId, b.student)}</h2>
-                <p className="mb-1">{subjectNameOf(db, b.subjectId, b.subject)}</p>
-                {b.notes && <p className="th-booking-notes mb-2">“{b.notes}”</p>}
-                <BookingStatusTags booking={b} />
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    className="btn btn-outline-ink btn-sm"
-                    aria-label={`View booking #${b.id}`}
-                    onClick={() => setSelectedBookingId(b.id)}
-                  >
-                    Details
-                  </button>
+          {bookings.map((b) => {
+            const canCancel = b.status === 'CONFIRMED' && new Date(b.startTime).getTime() > now.getTime()
+            return (
+              <li key={b.id} className="th-booking">
+                <div className="th-booking-when">
+                  <strong>{formatDay(b.startTime)}</strong>
+                  <span>{formatTimeRange(b.startTime, b.endTime)}</span>
+                  <span className="text-muted-ink small">{formatHours(b.durationHours)}</span>
                 </div>
-              </div>
-              <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId, b.subjectId, b.currentHourlyPrice)} />
-            </li>
-          ))}
+                <div className="th-booking-what">
+                  <h2 className="h3 mb-1">{userNameOf(db, b.studentId, b.student)}</h2>
+                  <p className="mb-1">{subjectNameOf(db, b.subjectId, b.subject)}</p>
+                  {b.notes && <p className="th-booking-notes mb-2">“{b.notes}”</p>}
+                  <BookingStatusTags booking={b} />
+                  {b.status === 'CANCELLED' && (
+                    <p className="small text-muted-ink mt-1 mb-0">
+                      Cancelled by {b.cancelledBy === 'TUTOR' ? 'tutor' : 'student'} · {b.refundPercentage ?? 0}% refund (
+                      {formatMoney(b.refundAmount ?? 0)})
+                    </p>
+                  )}
+                  <div className="mt-2 d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-outline-ink btn-sm"
+                      aria-label={`View booking #${b.id}`}
+                      onClick={() => setSelectedBookingId(b.id)}
+                    >
+                      Details
+                    </button>
+                    {canCancel && (
+                      <button
+                        type="button"
+                        className="btn btn-danger-soft btn-sm"
+                        aria-label={`Cancel appointment #${b.id}`}
+                        onClick={() => setCancellingBooking(b)}
+                      >
+                        Cancel appointment
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <PriceSnapshot booking={b} currentRate={currentRateOf(db, b.tutorId, b.subjectId, b.currentHourlyPrice)} />
+              </li>
+            )
+          })}
         </ol>
       )}
       {selectedBookingId !== null && (
-        <BookingDetailModal bookingId={selectedBookingId} onClose={() => setSelectedBookingId(null)} />
+        <BookingDetailModal
+          bookingId={selectedBookingId}
+          onClose={() => setSelectedBookingId(null)}
+          onCancelled={(res) =>
+            setNotice(
+              `Cancelled appointment #${res.booking.id}. Student refunded 100% (${formatMoney(res.refundAmount)}).`,
+            )
+          }
+        />
+      )}
+      {cancellingBooking !== null && (
+        <CancelBookingModal
+          booking={cancellingBooking}
+          onClose={() => setCancellingBooking(null)}
+          onCancelled={(res) => {
+            setCancellingBooking(null)
+            setNotice(
+              `Cancelled appointment #${res.booking.id}. Student refunded 100% (${formatMoney(res.refundAmount)}).`,
+            )
+          }}
+        />
       )}
     </>
   )

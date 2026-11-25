@@ -13,7 +13,7 @@ A full-stack application connecting tutors and students.
 
 ### Database Setup (Docker)
 
-Start PostgreSQL on port `5433`:
+Start PostgreSQL on port `5434`:
 ```bash
 docker compose up -d
 ```
@@ -35,10 +35,9 @@ docker compose up -d
 3. Configure environment variables:
    - Copy `.env.example` to `.env` and verify the values:
      ```env
-     DATABASE_URL="postgresql://postgres:password@localhost:5433/tutorhub?schema=public"
+     DATABASE_URL="postgresql://postgres:password@localhost:5434/tutorhub?schema=public"
      JWT_SECRET="change-me-to-a-long-random-string"
      PORT=3000
-     UPLOAD_DIR="uploads"
      ```
 
 4. Generate Prisma client, apply database migrations, and seed sample data:

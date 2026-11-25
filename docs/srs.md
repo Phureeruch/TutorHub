@@ -2,7 +2,8 @@
 # Software Requirements Specification (SRS)
 
 **Draft 2 – Revised Requirements (Post-Clarification)**  
-**Revision 2.1 (Sprint 1 review):** per-subject hourly prices, teaching levels and topics (FR-05), and optional lecture-file attachments on bookings (§4.1, FR-08, BR-08) moved into scope.
+**Revision 2.1 (Sprint 1 review):** per-subject hourly prices, teaching levels and topics (FR-05), and optional lecture-file attachments on bookings (§4.1, FR-08, BR-08) moved into scope.  
+**Revision 2.2 (Lab 7 adaptive maintenance — `CHG-03`, Issue `#54`):** added 1-hour tutor availability publication notice and 8-hour daily teaching capacity limit (`FR-06`, `BR-04`), 2-hour advance student booking cutoff and 4-hour maximum single-booking duration cap (`FR-08`, `BR-05`), and 3-tier multi-hour bundle discount (`0%` for 1h, `5%` for 2h, `10%` for 3h–4h) on frozen booking `totalPrice` snapshots (`FR-10`, `BR-09`).
 
 ## 1. Introduction
 
@@ -113,7 +114,7 @@ The system shall provide mock email verification for Students and a mock passwor
 Tutors shall be able to manage their profile, teaching information, selected subjects, and hourly prices. Hourly prices are set per subject. For each subject, a Tutor may also state the teaching levels they teach it at (High school, Undergraduate, Graduate) and a short description of the topics covered (at most 200 characters). Admin shall be able to manage the available subject list.
 
 **FR-06: Tutor Availability Management**  
-Tutors shall be able to create, view, update, and remove their available time periods according to the booking status.
+Tutors shall be able to create, view, update, and remove their available time periods according to the booking status, subject to a minimum 1-hour advance publication notice and an 8-hour maximum daily teaching capacity per local calendar day (`Asia/Bangkok`).
 
 **FR-07: Student Tutor Discovery**  
 Students shall be able to select a subject and search for available Tutors by time, or select a Tutor and view their available times.
@@ -121,13 +122,13 @@ Students shall be able to select a subject and search for available Tutors by ti
 ### 5.3 Booking and Payment
 
 **FR-08: Booking Creation**  
-Students shall be able to book an available time period by selecting a Tutor, subject, start time (aligned to 1-hour intervals starting at :00 or :30), and lesson duration in whole hours. Students may optionally add notes and attach up to 5 lecture files (at most 20 MB each; PDF, PowerPoint, Word, plain text, or image files) for the Tutor to review before the lesson.
+Students shall be able to book an available time period at least 2 hours prior to the lesson start time by selecting a Tutor, subject, start time (aligned to 1-hour intervals starting at :00 or :30), and lesson duration of 1 to 4 whole hours. Students may optionally add notes and attach up to 5 lecture files (at most 20 MB each; PDF, PowerPoint, Word, plain text, or image files) for the Tutor to review before the lesson.
 
 **FR-09: Booking Conflict Prevention**  
 The system shall check availability and prevent overlapping bookings for the same Tutor or the same Student.
 
 **FR-10: Mock Payment and Price Records**  
-The system shall simulate payment and store the payment result and booking price snapshot. The recorded price shall remain unchanged if the Tutor changes their hourly price later.
+The system shall simulate payment, apply the multi-hour bundle discount tier (0% for 1h, 5% for 2h, 10% for 3h–4h), and store the payment result, base hourly price snapshot, and discounted total price snapshot. The recorded price snapshot shall remain unchanged if the Tutor changes their hourly price later.
 
 **FR-11: Booking Information**  
 Students shall be able to view their own bookings. Tutors shall be able to view appointments related to their lessons. Admin shall be able to view all bookings.
@@ -159,11 +160,11 @@ Students may register themselves but must complete mock email verification befor
 **BR-03: Access Permissions**  
 Users may access only the functions and information permitted by their roles and ownership.
 
-**BR-04: Availability Duration and Start Times**  
-A Tutor availability period must be at least one hour long, and its total duration must be a whole number of hours. Availability periods must start on the hour (:00) or half-hour (:30).
+**BR-04: Availability Duration, Lead-Time and Daily Capacity**  
+A Tutor availability period must be between 1 and 8 whole hours long, start on the hour (:00) or half-hour (:30), and begin at least 1 hour (60 minutes) in the future at the time of creation or update. Across any single local calendar day (`Asia/Bangkok`, `UTC+7`), a Tutor's combined open availability hours and non-cancelled booked lesson hours must not exceed 8 hours.
 
-**BR-05: Booking Time and Alignment (No Dead Fragments)**  
-Booking start times must follow 1-hour intervals (e.g., 09:00, 10:00... or 09:30, 10:30, 11:30...) aligned with the availability period start. Start times may begin on the hour (:00) or half-hour (:30). Booking duration must be a whole number of hours (1h, 2h, etc.). This ensures that all bookings and any remaining availability segments remain in whole-hour increments, preventing unbookable fractional fragments.
+**BR-05: Booking Time, Alignment, Cutoff and Max Duration (No Dead Fragments)**  
+Booking start times must follow 1-hour intervals (e.g., 09:00, 10:00... or 09:30, 10:30, 11:30...) aligned with the availability period start, beginning on the hour (:00) or half-hour (:30), and must be scheduled at least 2 hours (120 minutes) in advance of the current time (`startTime - now >= 2 hours`). A single booking duration must be a whole number of hours between 1 and 4 hours inclusive (`1 <= durationHours <= 4`). This ensures that all bookings and any remaining availability segments remain in whole-hour increments, preventing unbookable fractional fragments and schedule monopolization.
 
 **BR-06: Availability and Partial Booking**  
 A booking must fit entirely within one Tutor availability period. A Student may book part of an availability period, and the remaining available time may still be booked by other students in whole-hour increments.
@@ -174,8 +175,8 @@ The system must prevent overlapping confirmed bookings for the same Tutor or the
 **BR-08: Booking Confirmation and Atomic Consistency**  
 A booking shall be confirmed only after the mock payment succeeds and the system successfully verifies that the selected time is still available. The availability check, mock payment, and booking confirmation must execute within an atomic transaction. If the selected time is no longer available (e.g., due to a concurrent booking confirmation), the mock payment and booking creation must be atomically rolled back, preventing double booking and ensuring no payment record is persisted for a failed booking. Any lecture files attached to the booking are linked to it inside the same transaction, so a failed booking leaves no files linked to it.
 
-**BR-09: Price Snapshot**  
-The system shall record the hourly price of the chosen subject and the total price when a booking is confirmed. Later price changes shall not affect existing bookings.
+**BR-09: Price Snapshot and Multi-Hour Bundle Discount**  
+When a booking is confirmed, the system shall snapshot the chosen subject's base `hourlyPriceSnapshot` and compute the frozen `totalPrice` (`Decimal(10, 2)`) using a 3-tier multi-hour bundle discount: **1 hour = 0% discount** (`hourlyPrice * 1`), **2 hours = 5% discount** (`round2(hourlyPrice * 2 * 0.95)`), and **3 to 4 hours = 10% discount** (`round2(hourlyPrice * durationHours * 0.90)`). Later tutor price changes shall not affect existing bookings, and any subsequent cancellation refund (`BR-11`, `BR-12`) shall be calculated from the frozen discounted `totalPrice`.
 
 **BR-10: Confirmed Booking Changes**  
 A confirmed booking cannot change its Tutor, subject, date, start time, or duration. The Student must cancel and create a new booking instead.

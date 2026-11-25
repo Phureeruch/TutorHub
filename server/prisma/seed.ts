@@ -51,6 +51,13 @@ const seedAccounts = [
     isEmailVerified: true,
     isApproved: true,
   },
+  {
+    name: 'Evan Pending',
+    email: 'evan.pending@tutorhub.dev',
+    role: 'TUTOR' as const,
+    isEmailVerified: true,
+    isApproved: false,
+  },
 ];
 
 const subjectData = [
@@ -80,6 +87,10 @@ const tutorProfileData = [
   {
     email: 'bob@tutorhub.dev',
     bio: 'Math TA for two years. Bring the problem set you are stuck on and we will work through it.',
+  },
+  {
+    email: 'evan.pending@tutorhub.dev',
+    bio: 'Applied physics graduate student eager to teach introductory mechanics and calculus.',
   },
 ];
 

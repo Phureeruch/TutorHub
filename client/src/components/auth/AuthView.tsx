@@ -2,12 +2,11 @@ import { useRef, useState, type FormEvent } from 'react'
 import { ApiError, MIN_PASSWORD_LENGTH } from '../../api/mockApi'
 import { useMockApp } from '../../context/appContext'
 import { useFieldError } from '../../hooks/useFieldError'
-import { SEED_ACCOUNTS, SEED_PASSWORD } from '../../data/seedData'
-import type { Role } from '../../types/types'
 import { AppLink } from '../ui/AppLink'
+import { AuthHeroGraphic, BrandMark } from '../ui/Illustrations'
+import { PasswordInput } from '../ui/PasswordInput'
 import { ResetPasswordModal } from './ResetPasswordModal'
 
-const ROLE_LABEL: Record<Role, string> = { STUDENT: 'Student', TUTOR: 'Tutor', ADMIN: 'Admin' }
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const messageOf = (err: unknown) => (err instanceof ApiError ? err.message : 'Something went wrong. Try again.')
@@ -62,11 +61,9 @@ function SignInForm() {
           <label className="form-label" htmlFor="login-password">
             Password
           </label>
-          <input
+          <PasswordInput
             id="login-password"
-            ref={passwordRef}
-            type="password"
-            className="form-control"
+            inputRef={passwordRef}
             autoComplete="current-password"
             value={password}
             onChange={(e) => {
@@ -94,39 +91,6 @@ function SignInForm() {
           Sign in
         </button>
       </form>
-
-      {(!import.meta.env.PROD || import.meta.env.VITE_SHOW_DEV_HINTS === 'true') && (
-        <section className="th-seed" aria-labelledby="seed-heading">
-          <h2 id="seed-heading" className="h3">
-            Seed accounts
-          </h2>
-          <p className="small text-muted-ink mb-2">
-            Development only. Every account uses the password <code>{SEED_PASSWORD}</code>.
-          </p>
-          <ul className="th-seed-list">
-            {SEED_ACCOUNTS.map((account) => (
-              <li key={account.email}>
-                <div>
-                  <strong>{account.name}</strong> <span className="th-tag">{ROLE_LABEL[account.role]}</span>
-                  <div className="small text-muted-ink">{account.note}</div>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-outline-ink btn-sm"
-                  onClick={() => {
-                    setEmail(account.email)
-                    setPassword(SEED_PASSWORD)
-                    setError(null)
-                  }}
-                  aria-label={`Fill in ${account.name}'s credentials`}
-                >
-                  Fill in
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       {resetOpen && (
         <ResetPasswordModal
@@ -219,11 +183,9 @@ function RegisterForm() {
         <label className="form-label" htmlFor="reg-password">
           Password
         </label>
-        <input
+        <PasswordInput
           id="reg-password"
-          ref={passwordRef}
-          type="password"
-          className="form-control"
+          inputRef={passwordRef}
           autoComplete="new-password"
           minLength={MIN_PASSWORD_LENGTH}
           value={password}
@@ -257,22 +219,43 @@ function RegisterForm() {
 export function AuthView({ mode }: { mode: 'login' | 'register' }) {
   return (
     <main className="th-auth">
-      <header className="th-auth-header">
-        <h1 className="th-wordmark th-wordmark-lg mb-1">TutorHub</h1>
-        <p className="text-muted-ink small mb-0">School tutoring portal (release 2)</p>
-      </header>
+      <div className="th-auth-shell">
+        <div className="th-auth-showcase" aria-hidden="true">
+          <div>
+            <span className="th-auth-showcase-badge">Peer Tutoring Platform</span>
+            <p className="th-auth-showcase-title">Schedule 1-on-1 study sessions in seconds.</p>
+            <p className="th-auth-showcase-copy">
+              Browse verified tutors, pick aligned whole-hour slots, and keep every rate snapshot locked at booking.
+            </p>
+          </div>
+          <AuthHeroGraphic />
+        </div>
 
-      <section className="th-auth-card th-surface" aria-label={mode === 'login' ? 'Sign in' : 'Create a student account'}>
-        <nav className="th-auth-tabs" aria-label="Account">
-          <AppLink to="/login" className="th-auth-tab" aria-current={mode === 'login' ? 'page' : undefined}>
-            Sign in
-          </AppLink>
-          <AppLink to="/register" className="th-auth-tab" aria-current={mode === 'register' ? 'page' : undefined}>
-            Create account
-          </AppLink>
-        </nav>
-        <div className="th-auth-body">{mode === 'login' ? <SignInForm /> : <RegisterForm />}</div>
-      </section>
+        <div className="th-auth-pane">
+          <header className="th-auth-header">
+            <h1 className="th-wordmark th-wordmark-lg mb-1">
+              <BrandMark size={28} />
+              TutorHub
+            </h1>
+            <p className="text-muted-ink small mb-0">School tutoring portal</p>
+          </header>
+
+          <section
+            className="th-auth-card th-surface"
+            aria-label={mode === 'login' ? 'Sign in' : 'Create a student account'}
+          >
+            <nav className="th-auth-tabs" aria-label="Account">
+              <AppLink to="/login" className="th-auth-tab" aria-current={mode === 'login' ? 'page' : undefined}>
+                Sign in
+              </AppLink>
+              <AppLink to="/register" className="th-auth-tab" aria-current={mode === 'register' ? 'page' : undefined}>
+                Create account
+              </AppLink>
+            </nav>
+            <div className="th-auth-body">{mode === 'login' ? <SignInForm /> : <RegisterForm />}</div>
+          </section>
+        </div>
+      </div>
     </main>
   )
 }

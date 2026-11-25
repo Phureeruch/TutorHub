@@ -37,7 +37,7 @@ function isValidDb(value: unknown): value is MockDb {
   if (!typed.tutorSubjects.every((ts) => typeof ts.hourlyPrice === 'number' && Array.isArray(ts.levels))) return false
   if (!typed.bookings.every((b) => Array.isArray(b.attachments))) return false
   return typed.users
-    .filter((u) => u.role === 'TUTOR')
+    .filter((u) => u.role === 'TUTOR' && u.isApproved)
     .every((tutor) => typed.tutorProfiles.some((p) => p.userId === tutor.id))
 }
 

@@ -6,6 +6,7 @@ import {
   getApprovedTutors,
   listTutorDirectory,
 } from '../services/discovery.service.js';
+import { validateDiscoveryTimeWindow } from '../utils/discovery-time.js';
 
 const router = Router();
 
@@ -22,6 +23,8 @@ const discoveryQuerySchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   level: z.enum(teachingLevels).optional(),
+  startHour: z.string().optional(),
+  endHour: z.string().optional(),
 });
 
 function isValidCalendarDate(date: string): boolean {
@@ -74,21 +77,36 @@ router.get('/availability', async (req: Request, res: Response) => {
     return;
   }
 
+  const timeWindowCheck = validateDiscoveryTimeWindow(
+    parsed.data.startHour,
+    parsed.data.endHour,
+  );
+  if (!timeWindowCheck.valid) {
+    res.status(400).json({ message: timeWindowCheck.reason });
+    return;
+  }
+
   try {
-   const tutors = await listTutorDirectory({
-  ...(parsed.data.subjectId !== undefined
-    ? { subjectId: parsed.data.subjectId }
-    : {}),
-  ...(parsed.data.tutorId !== undefined
-    ? { tutorId: parsed.data.tutorId }
-    : {}),
-  ...(parsed.data.date !== undefined
-    ? { date: parsed.data.date }
-    : {}),
-  ...(parsed.data.level !== undefined
-    ? { level: parsed.data.level }
-    : {}),
-});
+    const tutors = await listTutorDirectory({
+      ...(parsed.data.subjectId !== undefined
+        ? { subjectId: parsed.data.subjectId }
+        : {}),
+      ...(parsed.data.tutorId !== undefined
+        ? { tutorId: parsed.data.tutorId }
+        : {}),
+      ...(parsed.data.date !== undefined
+        ? { date: parsed.data.date }
+        : {}),
+      ...(parsed.data.level !== undefined
+        ? { level: parsed.data.level }
+        : {}),
+      ...(parsed.data.startHour !== undefined
+        ? { startHour: parsed.data.startHour }
+        : {}),
+      ...(parsed.data.endHour !== undefined
+        ? { endHour: parsed.data.endHour }
+        : {}),
+    });
     res.status(200).json(tutors);
   } catch (error) {
     console.error(error);

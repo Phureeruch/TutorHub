@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { httpClient } from '../../api/httpClient'
 import { ApiError, getBookingById } from '../../api/mockApi'
 import { useCurrentUser, useMockApp } from '../../context/appContext'
-import type { Booking } from '../../types/types'
+import { useNow } from '../../hooks/useNow'
+import type { Booking, CancelBookingResponse } from '../../types/types'
 import { formatBytes, formatDay, formatHours, formatMoney, formatRate, formatTime, formatTimeRange } from '../../utils/format'
 import { attachmentKey } from '../../utils/attachments'
 import { currentRateOf, subjectNameOf, userNameOf } from '../../utils/lookups'
+import { CancelBookingModal } from './CancelBookingModal'
 import { Modal } from './Modal'
 import { BookingStatusTags } from './PriceSnapshot'
 
@@ -19,17 +21,20 @@ function rateNow(current: number | null, snapshot: number): string {
 interface BookingDetailModalProps {
   bookingId: number
   onClose(): void
+  onCancelled?(response: CancelBookingResponse): void
 }
 
 /** FR-11: one booking in full, fetched through the same ownership check as GET /api/bookings/:id. */
-export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalProps) {
+export function BookingDetailModal({ bookingId, onClose, onCancelled }: BookingDetailModalProps) {
   const user = useCurrentUser()
   const { mode, db, fetchBookingById } = useMockApp()
+  const now = useNow()
   const [apiBooking, setApiBooking] = useState<Booking | null>(() =>
     mode === 'api' ? (db.bookings.find((b) => b.id === bookingId) ?? null) : null,
   )
   const [apiError, setApiError] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
 
   useEffect(() => {
     if (mode !== 'api') return
@@ -85,14 +90,45 @@ export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalPro
     }
   }
 
+  const canCancel =
+    booking.status === 'CONFIRMED' &&
+    new Date(booking.startTime).getTime() > now.getTime() &&
+    ((user.role === 'STUDENT' && booking.studentId === user.id) ||
+      (user.role === 'TUTOR' && booking.tutorId === user.id))
+
+  if (confirmingCancel) {
+    return (
+      <CancelBookingModal
+        booking={booking}
+        onClose={() => setConfirmingCancel(false)}
+        onCancelled={(res) => {
+          setApiBooking(res.booking)
+          setConfirmingCancel(false)
+          onCancelled?.(res)
+        }}
+      />
+    )
+  }
+
   return (
     <Modal
       title={`Booking #${booking.id}`}
       onClose={onClose}
       footer={
-        <button type="button" className="btn btn-outline-ink" onClick={onClose}>
-          Close
-        </button>
+        <>
+          {canCancel && (
+            <button
+              type="button"
+              className="btn btn-danger-soft me-auto"
+              onClick={() => setConfirmingCancel(true)}
+            >
+              {user.role === 'TUTOR' ? 'Cancel appointment' : 'Cancel booking'}
+            </button>
+          )}
+          <button type="button" className="btn btn-outline-ink" onClick={onClose}>
+            Close
+          </button>
+        </>
       }
     >
       <dl className="th-detail">
@@ -123,6 +159,19 @@ export function BookingDetailModal({ bookingId, onClose }: BookingDetailModalPro
         <dd>
           <BookingStatusTags booking={booking} />
         </dd>
+        {booking.status === 'CANCELLED' && (
+          <>
+            <dt>Cancelled by</dt>
+            <dd>
+              {booking.cancelledBy === 'TUTOR' ? 'Tutor' : 'Student'}
+              {booking.cancelledAt ? ` (${formatDay(booking.cancelledAt)}, ${formatTime(booking.cancelledAt)})` : ''}
+            </dd>
+            <dt>Refund</dt>
+            <dd>
+              {booking.refundPercentage ?? 0}% ({formatMoney(booking.refundAmount ?? 0)})
+            </dd>
+          </>
+        )}
         <dt>Student notes</dt>
         <dd>{booking.notes ?? 'None'}</dd>
         <dt>Lecture files</dt>

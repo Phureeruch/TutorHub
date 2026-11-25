@@ -6,6 +6,7 @@ import {
   createAvailability,
   deleteAvailability,
   getTutorAvailability,
+  updateAvailability,
 } from '../services/availability.service.js';
 import {
   authenticate,
@@ -65,6 +66,41 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(201).json(availability);
   } catch (error) {
     handleError(res, error, 'Unable to create availability.');
+  }
+});
+
+// PUT /api/tutor/availability/:id
+router.put('/:id', async (req: Request, res: Response) => {
+  const availabilityId = Number(req.params.id);
+
+  if (!Number.isInteger(availabilityId) || availabilityId <= 0) {
+    res.status(400).json({ message: 'Invalid availability ID.' });
+    return;
+  }
+
+  const parsed = availabilitySchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid availability details.' });
+    return;
+  }
+
+  const tutorId = getUserId(res);
+
+  if (tutorId === null) {
+    res.status(401).json({ message: 'Authentication required.' });
+    return;
+  }
+
+  try {
+    const availability = await updateAvailability(tutorId, availabilityId, {
+      startTime: new Date(parsed.data.startTime),
+      endTime: new Date(parsed.data.endTime),
+    });
+
+    res.status(200).json(availability);
+  } catch (error) {
+    handleError(res, error, 'Unable to update availability.');
   }
 });
 

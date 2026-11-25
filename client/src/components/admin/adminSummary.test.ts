@@ -30,4 +30,19 @@ describe('computeAdminSummary (F-07)', () => {
     const pending = { ...db, users: db.users.map((u) => (u.name === 'Bob' ? { ...u, isApproved: false } : u)) }
     expect(computeAdminSummary(pending).activeTutors).toBe(1)
   })
+
+  it('retains revenue for cancelled bookings with 50% or 0% refunds (DEF-08, F-15, STS-15.3)', () => {
+    const withPartialRefunds = {
+      ...db,
+      bookings: [
+        { ...db.bookings[0], id: 101, status: 'CONFIRMED' as const, totalPrice: 400 },
+        { ...db.bookings[0], id: 102, status: 'CANCELLED' as const, totalPrice: 400, refundAmount: 200, refundPercentage: 50 },
+        { ...db.bookings[0], id: 103, status: 'CANCELLED' as const, totalPrice: 400, refundAmount: 0, refundPercentage: 0 },
+        { ...db.bookings[0], id: 104, status: 'CANCELLED' as const, totalPrice: 400, refundAmount: 400, refundPercentage: 100 },
+      ],
+    }
+    const summary = computeAdminSummary(withPartialRefunds)
+    expect(summary.totalBookings).toBe(4)
+    expect(summary.mockRevenue).toBe(1000)
+  })
 })
