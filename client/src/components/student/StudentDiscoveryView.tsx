@@ -15,6 +15,14 @@ import { SubjectList } from './SubjectDetails'
 
 const hoursOf = (a: Availability) => (new Date(a.endTime).getTime() - new Date(a.startTime).getTime()) / HOUR_MS
 
+const TIME_OPTIONS: string[] = []
+for (let h = 0; h < 24; h++) {
+  const hh = String(h).padStart(2, '0')
+  TIME_OPTIONS.push(`${hh}:00`, `${hh}:30`)
+}
+const START_HOURS = TIME_OPTIONS
+const END_HOURS = [...TIME_OPTIONS.slice(1), '24:00']
+
 function TutorEntry({ listing, onBook }: { listing: TutorListing; onBook(a: Availability): void }) {
   const { user, profile, subjects, availabilities } = listing
   const headingId = `tutor-${user.id}`
@@ -78,6 +86,8 @@ export function StudentDiscoveryView() {
   const [tutorId, setTutorId] = useState<number | undefined>(undefined)
   const [date, setDate] = useState('')
   const [level, setLevel] = useState<TeachingLevel | undefined>(undefined)
+  const [startHour, setStartHour] = useState('')
+  const [endHour, setEndHour] = useState('')
   const [apiListings, setApiListings] = useState<TutorListing[] | null>(null)
   const [selection, setSelection] = useState<{ listing: TutorListing; availability: Availability } | null>(null)
   const [confirmed, setConfirmed] = useState<Booking | null>(null)
@@ -85,7 +95,14 @@ export function StudentDiscoveryView() {
   useEffect(() => {
     if (mode !== 'api') return
     let active = true
-    void fetchDirectory({ subjectId, tutorId, date: date || undefined, level })
+    void fetchDirectory({
+      subjectId,
+      tutorId,
+      date: date || undefined,
+      level,
+      startHour: startHour || undefined,
+      endHour: endHour || undefined,
+    })
       .then((data) => {
         if (active) setApiListings(data)
       })
@@ -95,23 +112,48 @@ export function StudentDiscoveryView() {
     return () => {
       active = false
     }
-  }, [mode, subjectId, tutorId, date, level, db.availabilities, fetchDirectory])
+  }, [mode, subjectId, tutorId, date, level, startHour, endHour, db.availabilities, fetchDirectory])
 
   const listings =
     mode === 'api' && apiListings !== null
       ? apiListings
-      : listTutorDirectory(db, { now, subjectId, tutorId, date: date || undefined, level })
+      : listTutorDirectory(db, {
+          now,
+          subjectId,
+          tutorId,
+          date: date || undefined,
+          level,
+          startHour: startHour || undefined,
+          endHour: endHour || undefined,
+        })
   const tutors = db.users.filter((u) => u.role === 'TUTOR' && u.isApproved)
-  const filtered = subjectId !== undefined || tutorId !== undefined || date !== '' || level !== undefined
+  const filtered =
+    subjectId !== undefined ||
+    tutorId !== undefined ||
+    date !== '' ||
+    level !== undefined ||
+    startHour !== '' ||
+    endHour !== ''
   const clearFilters = () => {
     setSubjectId(undefined)
     setTutorId(undefined)
     setDate('')
     setLevel(undefined)
+    setStartHour('')
+    setEndHour('')
   }
 
   const emptyMessage = () => {
     if (date) return `No open times on ${formatDay(`${date}T00:00`)} match these filters.`
+    if (startHour || endHour) {
+      const windowStr =
+        startHour && endHour
+          ? `between ${startHour} and ${endHour}`
+          : startHour
+            ? `from ${startHour}`
+            : `until ${endHour}`
+      return `No open times ${windowStr} match these filters.`
+    }
     if (level !== undefined) {
       const what = subjectId !== undefined ? subjectNameOf(db, subjectId) : 'any subject'
       return `No tutor teaches ${what} at ${LEVEL_LABEL[level].toLowerCase()} level with open times right now.`
@@ -205,6 +247,42 @@ export function StudentDiscoveryView() {
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
+          </div>
+          <div>
+            <label className="form-label" htmlFor="filter-start-hour">
+              From time
+            </label>
+            <select
+              id="filter-start-hour"
+              className="form-select"
+              value={startHour}
+              onChange={(e) => setStartHour(e.target.value)}
+            >
+              <option value="">Any start</option>
+              {START_HOURS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label" htmlFor="filter-end-hour">
+              To time
+            </label>
+            <select
+              id="filter-end-hour"
+              className="form-select"
+              value={endHour}
+              onChange={(e) => setEndHour(e.target.value)}
+            >
+              <option value="">Any end</option>
+              {END_HOURS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
           </div>
           {filtered && (
             <button type="button" className="btn btn-outline-ink th-filter-clear" onClick={clearFilters}>

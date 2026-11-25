@@ -3,7 +3,17 @@ import { getStoredToken, httpClient, setStoredToken, type PublicTutorOption, typ
 import * as api from '../api/mockApi'
 import { computeAdminSummary } from '../components/admin/adminSummary'
 import { createSeedDb } from '../data/seedData'
-import type { AdminSummary, Availability, Booking, MockDb, TutorProfile, TutorSubject, User } from '../types/types'
+import type {
+  AdminSummary,
+  Availability,
+  Booking,
+  CreateSubjectRequest,
+  MockDb,
+  TutorProfile,
+  TutorSubject,
+  UpdateSubjectRequest,
+  User,
+} from '../types/types'
 import { attachmentKey } from '../utils/attachments'
 import { MockAppContext, type DirectoryFilters, type MockAppValue } from './appContext'
 import { loadState, readLatestDb, saveState, STORAGE_KEY, type AppState, type KeyValueStore } from './persistence'
@@ -467,6 +477,44 @@ export function MockAppProvider({
         }
         const me = actor()
         return api.getBookingById(stateRef.current.db, me, bookingId)
+      },
+      getPendingTutors: async () => {
+        if (mode === 'api') {
+          actor()
+          return httpClient.getPendingTutors()
+        }
+        const me = actor()
+        return api.getPendingTutors(stateRef.current.db, me)
+      },
+      approveTutor: async (tutorId: number) => {
+        if (mode === 'api') {
+          const me = actor()
+          const res = await httpClient.approveTutor(tutorId)
+          await hydrateFromApi(me)
+          return res.tutor
+        }
+        const me = actor()
+        return mutate((db) => api.approveTutor(db, me, tutorId))
+      },
+      createSubject: async (req: CreateSubjectRequest) => {
+        if (mode === 'api') {
+          const me = actor()
+          const created = await httpClient.createSubject(req)
+          await hydrateFromApi(me)
+          return created
+        }
+        const me = actor()
+        return mutate((db) => api.createSubject(db, me, req))
+      },
+      updateSubject: async (subjectId: number, req: UpdateSubjectRequest) => {
+        if (mode === 'api') {
+          const me = actor()
+          const updated = await httpClient.updateSubject(subjectId, req)
+          await hydrateFromApi(me)
+          return updated
+        }
+        const me = actor()
+        return mutate((db) => api.updateSubject(db, me, subjectId, req))
       },
       resetToSeedData: () => {
         setSimulateConflict(false)

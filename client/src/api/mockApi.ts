@@ -13,13 +13,16 @@ import type {
   CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
+  CreateSubjectRequest,
   MockDb,
+  PendingTutor,
   RegisterRequest,
   Subject,
   TaughtSubjectInput,
   TeachingLevel,
   TutorProfile,
   TutorSubject,
+  UpdateSubjectRequest,
   UpdateTutorProfileRequest,
   User,
 } from '../types/types'
@@ -30,6 +33,7 @@ import {
   hasBookingOverlap,
   HOUR_MS,
   isAlignedBookingStart,
+  isSlotInTimeWindow,
   isWithin,
   mergeAdjacentAvailabilities,
   sliceAvailabilityAfterBooking,
@@ -227,6 +231,9 @@ export function createAvailability(
   now: Date,
 ): Mutation<Availability> {
   requireRole(actor, 'TUTOR')
+  if (!actor.isApproved) {
+    throw new ApiError(403, 'Your tutor account is pending administrator approval.')
+  }
   const start = new Date(req.startTime)
   const end = new Date(req.endTime)
   const validation = validateAvailabilityInput(start, end, now)
@@ -281,6 +288,9 @@ export function updateAvailability(
   now: Date,
 ): Mutation<Availability> {
   requireRole(actor, 'TUTOR')
+  if (!actor.isApproved) {
+    throw new ApiError(403, 'Your tutor account is pending administrator approval.')
+  }
   const target = db.availabilities.find((a) => a.id === availabilityId)
   if (!target) throw new ApiError(404, 'Availability not found.')
   if (target.tutorId !== actor.id) throw new ApiError(403, 'You can only edit your own availability.')
@@ -550,11 +560,13 @@ export interface TutorDirectoryFilter {
    * Not in SDS §4.2's query params yet (backend-api-guide.md §5.2).
    */
   level?: TeachingLevel
+  startHour?: string
+  endHour?: string
 }
 
 export function listTutorDirectory(
   db: MockDb,
-  { now, subjectId, tutorId, date, level }: TutorDirectoryFilter,
+  { now, subjectId, tutorId, date, level, startHour, endHour }: TutorDirectoryFilter,
 ): TutorListing[] {
   return db.users
     .filter((u) => u.role === 'TUTOR' && u.isApproved && (tutorId === undefined || u.id === tutorId))
@@ -568,10 +580,16 @@ export function listTutorDirectory(
           profile,
           subjects: subjectsOfTutor(db, user.id),
           availabilities: db.availabilities
-            .filter(
-              (a) =>
-                a.tutorId === user.id && getValidStartSlots(a, now).length > 0 && (!date || dayKey(a.startTime) === date),
-            )
+            .filter((a) => {
+              if (a.tutorId !== user.id) return false
+              const validSlots = getValidStartSlots(a, now)
+              if (validSlots.length === 0) return false
+              if (date && dayKey(a.startTime) !== date) return false
+              if (startHour || endHour) {
+                return validSlots.some((slot) => isSlotInTimeWindow(slot, startHour, endHour))
+              }
+              return true
+            })
             .sort(byStartTime),
         },
       ]
@@ -583,6 +601,114 @@ export function listTutorDirectory(
           (s) => (subjectId === undefined || s.id === subjectId) && (level === undefined || s.levels.includes(level)),
         ),
     )
-    // Searching by date means "who can I book that day": tutors with nothing open drop out.
-    .filter((t) => !date || t.availabilities.length > 0)
+    // Searching by date or time window means "who can I book that day/time": tutors with nothing open drop out.
+    .filter((t) => (!date && !startHour && !endHour) || t.availabilities.length > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Admin (F-13)
+// ---------------------------------------------------------------------------
+
+export function getPendingTutors(db: MockDb, actor: User): PendingTutor[] {
+  requireRole(actor, 'ADMIN')
+  return db.users
+    .filter((u) => u.role === 'TUTOR' && !u.isApproved)
+    .map((u) => {
+      const profile = db.tutorProfiles.find((p) => p.userId === u.id)
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        isApproved: u.isApproved,
+        createdAt: u.createdAt,
+        bio: profile?.bio ?? null,
+      }
+    })
+}
+
+export function approveTutor(db: MockDb, actor: User, tutorId: number): Mutation<User> {
+  requireRole(actor, 'ADMIN')
+  const tutor = db.users.find((u) => u.id === tutorId)
+  if (!tutor || tutor.role !== 'TUTOR') {
+    throw new ApiError(404, 'Tutor not found.')
+  }
+  const updated: User = {
+    ...tutor,
+    isApproved: true,
+    updatedAt: new Date().toISOString(),
+  }
+  return {
+    db: {
+      ...db,
+      users: db.users.map((u) => (u.id === tutorId ? updated : u)),
+    },
+    data: updated,
+  }
+}
+
+export function createSubject(db: MockDb, actor: User, req: CreateSubjectRequest): Mutation<Subject> {
+  requireRole(actor, 'ADMIN')
+  const name = req.name ? req.name.trim() : ''
+  if (name.length < 2 || name.length > 80) {
+    throw new ApiError(400, 'Subject name must be between 2 and 80 characters.')
+  }
+  const desc = req.description ? req.description.trim() : null
+  if (desc && desc.length > 300) {
+    throw new ApiError(400, 'Description cannot exceed 300 characters.')
+  }
+  if (db.subjects.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
+    throw new ApiError(409, 'A subject with this name already exists.')
+  }
+  const nextId = Math.max(0, ...db.subjects.map((s) => s.id)) + 1
+  const stamp = new Date().toISOString()
+  const subject: Subject = {
+    id: nextId,
+    name,
+    description: desc,
+    createdAt: stamp,
+  }
+  return {
+    db: {
+      ...db,
+      subjects: [...db.subjects, subject],
+    },
+    data: subject,
+  }
+}
+
+export function updateSubject(
+  db: MockDb,
+  actor: User,
+  subjectId: number,
+  req: UpdateSubjectRequest,
+): Mutation<Subject> {
+  requireRole(actor, 'ADMIN')
+  const existing = db.subjects.find((s) => s.id === subjectId)
+  if (!existing) {
+    throw new ApiError(404, 'Subject not found.')
+  }
+  const name = req.name ? req.name.trim() : ''
+  if (name.length < 2 || name.length > 80) {
+    throw new ApiError(400, 'Subject name must be between 2 and 80 characters.')
+  }
+  const desc = req.description !== undefined ? (req.description ? req.description.trim() : null) : existing.description
+  if (desc && desc.length > 300) {
+    throw new ApiError(400, 'Description cannot exceed 300 characters.')
+  }
+  if (db.subjects.some((s) => s.id !== subjectId && s.name.toLowerCase() === name.toLowerCase())) {
+    throw new ApiError(409, 'A subject with this name already exists.')
+  }
+  const updated: Subject = {
+    ...existing,
+    name,
+    description: desc,
+  }
+  return {
+    db: {
+      ...db,
+      subjects: db.subjects.map((s) => (s.id === subjectId ? updated : s)),
+    },
+    data: updated,
+  }
 }

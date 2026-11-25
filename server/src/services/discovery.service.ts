@@ -1,6 +1,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { isSlotInBangkokTimeWindow } from '../utils/discovery-time.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -15,6 +16,8 @@ export interface TutorDirectoryFilter {
   tutorId?: number;
   date?: string;
   level?: TeachingLevel;
+  startHour?: string;
+  endHour?: string;
 }
 
 function getBangkokDayRange(date: string) {
@@ -33,6 +36,8 @@ function hasFutureBookableSlot(
   endTime: Date,
   now: Date,
   dateRange?: { start: Date; end: Date },
+  startHour?: string,
+  endHour?: string,
 ): boolean {
   const start = startTime.getTime();
   const end = endTime.getTime();
@@ -51,6 +56,18 @@ function hasFutureBookableSlot(
       dateRange &&
       (slotStart < dateRange.start.getTime() ||
         slotEnd > dateRange.end.getTime())
+    ) {
+      continue;
+    }
+
+    if (
+      (startHour !== undefined || endHour !== undefined) &&
+      !isSlotInBangkokTimeWindow(
+        new Date(slotStart),
+        new Date(slotEnd),
+        startHour,
+        endHour,
+      )
     ) {
       continue;
     }
@@ -184,6 +201,8 @@ export async function listTutorDirectory(
             availability.endTime,
             now,
             dateRange,
+            filters.startHour,
+            filters.endHour,
           ),
       );
 
@@ -216,7 +235,9 @@ export async function listTutorDirectory(
     .filter((tutor) => tutor !== null)
     .filter(
       (tutor) =>
-        filters.date === undefined ||
+        (filters.date === undefined &&
+          filters.startHour === undefined &&
+          filters.endHour === undefined) ||
         tutor.availabilities.length > 0,
     );
 }

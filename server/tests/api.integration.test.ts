@@ -464,4 +464,52 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   availabilityIds.push(updateAvRes.body.id);
   assert.equal(new Date(updateAvRes.body.startTime).getTime(), shiftedStart.getTime());
   assert.equal(new Date(updateAvRes.body.endTime).getTime(), shiftedEnd.getTime());
+
+  // F-09: Discovery time window validation (STS-09.4)
+  const badFilterRes1 = await apiJson<{ message: string }>(
+    '/api/availability?startHour=15:00&endHour=14:00',
+  );
+  assert.equal(badFilterRes1.status, 400);
+  assert.equal(badFilterRes1.body.message, 'End time must be at least 1 hour after start time.');
+
+  const badFilterRes2 = await apiJson<{ message: string }>(
+    '/api/availability?startHour=09:15',
+  );
+  assert.equal(badFilterRes2.status, 400);
+  assert.equal(badFilterRes2.body.message, 'Invalid discovery filters.');
+
+  // F-13: Student and Tutor cannot access Admin endpoints (403 Forbidden, STS-13.4)
+  const studentPending = await apiJson('/api/admin/tutors/pending', { token: studentToken });
+  assert.equal(studentPending.status, 403);
+
+  const tutorSubjectPost = await apiJson('/api/admin/subjects', {
+    method: 'POST',
+    token: tutorToken,
+    body: JSON.stringify({ name: 'Hacking 101' }),
+  });
+  assert.equal(tutorSubjectPost.status, 403);
+
+  // F-13: Admin can list pending tutors (STS-13.1)
+  const adminPending = await apiJson<{ id: number; name: string }[]>('/api/admin/tutors/pending', {
+    token: adminToken,
+  });
+  assert.equal(adminPending.status, 200);
+  assert.ok(Array.isArray(adminPending.body));
+
+  // F-13: Admin approving unknown tutor returns 404 (STS-13.2)
+  const unknownApprove = await apiJson<{ message: string }>('/api/admin/tutors/999999/approve', {
+    method: 'PATCH',
+    token: adminToken,
+  });
+  assert.equal(unknownApprove.status, 404);
+  assert.equal(unknownApprove.body.message, 'Tutor account not found.');
+
+  // F-13: Admin duplicate subject returns 409 (STS-13.3)
+  const dupSubject = await apiJson<{ message: string }>('/api/admin/subjects', {
+    method: 'POST',
+    token: adminToken,
+    body: JSON.stringify({ name: 'python basics' }),
+  });
+  assert.equal(dupSubject.status, 409);
+  assert.equal(dupSubject.body.message, 'A subject with this name already exists.');
 });

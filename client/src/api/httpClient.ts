@@ -7,11 +7,14 @@ import type {
   CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
+  CreateSubjectRequest,
+  PendingTutor,
   RegisterRequest,
   Role,
   Subject,
   TeachingLevel,
   TutorProfile,
+  UpdateSubjectRequest,
   UpdateTutorProfileRequest,
   User,
 } from '../types/types'
@@ -46,6 +49,8 @@ export interface DiscoveryQuery {
   tutorId?: number
   date?: string
   level?: TeachingLevel
+  startHour?: string
+  endHour?: string
 }
 
 function getStorage(): Storage | null {
@@ -164,6 +169,8 @@ export const httpClient = {
     if (query.tutorId !== undefined) params.set('tutorId', String(query.tutorId))
     if (query.date) params.set('date', query.date)
     if (query.level) params.set('level', query.level)
+    if (query.startHour) params.set('startHour', query.startHour)
+    if (query.endHour) params.set('endHour', query.endHour)
     const qs = params.toString()
     const listings = await request<ApiTutorListing[]>(`/api/availability${qs ? `?${qs}` : ''}`)
     return listings.map((entry) => ({
@@ -287,4 +294,29 @@ export const httpClient = {
   async getAdminSummary(): Promise<AdminSummary> {
     return request<AdminSummary>('/api/admin/summary')
   },
+
+  async getPendingTutors(): Promise<PendingTutor[]> {
+    return request<PendingTutor[]>('/api/admin/tutors/pending')
+  },
+
+  async approveTutor(tutorId: number): Promise<{ message: string; tutor: User }> {
+    return request<{ message: string; tutor: User }>(`/api/admin/tutors/${tutorId}/approve`, {
+      method: 'PATCH',
+    })
+  },
+
+  async createSubject(req: CreateSubjectRequest): Promise<Subject> {
+    return request<Subject>('/api/admin/subjects', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    })
+  },
+
+  async updateSubject(subjectId: number, req: UpdateSubjectRequest): Promise<Subject> {
+    return request<Subject>(`/api/admin/subjects/${subjectId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    })
+  },
 }
+

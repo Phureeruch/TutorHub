@@ -145,6 +145,26 @@ export interface CancelBookingResponse {
   booking: Booking
 }
 
+export interface PendingTutor {
+  id: number
+  name: string
+  email: string
+  role: Role
+  isApproved: boolean
+  createdAt: string
+  bio: string | null
+}
+
+export interface CreateSubjectRequest {
+  name: string
+  description?: string | null
+}
+
+export interface UpdateSubjectRequest {
+  name: string
+  description?: string | null
+}
+
 // Client-side mock database standing in for PostgreSQL during unit/UI tests.
 export interface MockDb {
   users: User[]

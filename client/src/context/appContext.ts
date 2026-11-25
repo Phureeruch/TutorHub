@@ -7,10 +7,14 @@ import type {
   CancelBookingResponse,
   CreateAvailabilityRequest,
   CreateBookingRequest,
+  CreateSubjectRequest,
   MockDb,
+  PendingTutor,
   RegisterRequest,
+  Subject,
   TeachingLevel,
   TutorProfile,
+  UpdateSubjectRequest,
   UpdateTutorProfileRequest,
   User,
 } from '../types/types'
@@ -20,6 +24,8 @@ export interface DirectoryFilters {
   tutorId?: number
   date?: string
   level?: TeachingLevel
+  startHour?: string
+  endHour?: string
 }
 
 /**
@@ -51,6 +57,12 @@ export interface MockAppValue {
   cancelBooking(bookingId: number, reason?: string): Promise<CancelBookingResponse>
   fetchDirectory(filters: DirectoryFilters): Promise<TutorListing[]>
   fetchBookingById(bookingId: number): Promise<Booking>
+
+  getPendingTutors(): Promise<PendingTutor[]>
+  approveTutor(tutorId: number): Promise<User>
+  createSubject(req: CreateSubjectRequest): Promise<Subject>
+  updateSubject(subjectId: number, req: UpdateSubjectRequest): Promise<Subject>
+
   resetToSeedData(): void
 }
 
