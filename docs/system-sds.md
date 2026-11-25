@@ -1,7 +1,7 @@
 # System Design Specification (SDS) — TutorHub
 
-**Version:** 2.0 (Aligned with SRS Draft 2)  
-**Authors:** Korapin Manochokecharoen, Phureeruch Satithangkul  
+**Version:** 2.1 (Updated for Lab 7 Adaptive Maintenance `CHG-03` / Issue `#54`)  
+**Authors:** Korapin Manoprasertkoon, Phureeruch Satithangkul  
 **Course:** CPE 334  
 
 ---
@@ -270,6 +270,22 @@ sequenceDiagram
 * **Tutor Cancellation:**
   Student receives a 100% refund. The time period $[B_{start}, B_{end}]$ is marked permanently cancelled and is **not** restored or merged for other students.
 
+### 3.4 Multi-Hour Bundle Pricing, Lead-Time Cutoffs & Daily Capacity Policy (BR-04, BR-05, BR-09 — `CHG-03`)
+1. **3-Tier Multi-Hour Bundle Discount (`BR-09`, `FR-10`):**
+   - `calculateBookingPrice({ hourlyPrice, durationHours })` enforces `hourlyPrice > 0` and integer `durationHours` in `1..4`.
+   - Discount tiers applied to frozen `totalPrice` (`Decimal(10, 2)`):
+     - `durationHours === 1`: **0% discount** (`multiplier = 1.00`)
+     - `durationHours === 2`: **5% discount** (`multiplier = 0.95`)
+     - `durationHours === 3` or `4`: **10% discount** (`multiplier = 0.90`)
+   - `basePrice = round2(hourlyPrice * durationHours)`, `totalPrice = round2(hourlyPrice * durationHours * multiplier)`, and `discountAmount = round2(basePrice - totalPrice)`.
+   - `Booking.hourlyPriceSnapshot` stores the frozen base hourly rate while `Booking.totalPrice` stores the frozen post-discount total. Downstream cancellation refunds (`BR-11`, `BR-12`) and Admin retained revenue (`DEF-08`) compute directly from `Booking.totalPrice`.
+2. **2-Hour Advance Booking Cutoff & 4-Hour Max Single-Booking Cap (`BR-05`, `FR-08`):**
+   - `validateBookingTime()` and `createBookingAttempt()` require `startTime.getTime() - now.getTime() >= 2 * 60 * 60 * 1000` (`>= 120 minutes`); requests within `< 2 hours` of start return `400 "Bookings must be made at least 2 hours before the lesson starts."`
+   - Single bookings with `durationHours > 4` return `400 "A single booking cannot exceed 4 hours."`
+3. **1-Hour Tutor Availability Notice & 8-Hour Daily Teaching Capacity (`BR-04`, `FR-06`):**
+   - `validateAvailabilityWindow()` requires `startTime.getTime() - now.getTime() >= 60 * 60 * 1000` (`>= 60 minutes`, else `400 "Availability must start at least 1 hour in the future."`) and single-window duration in `1..8` whole hours.
+   - Inside the `Serializable` transaction in `createAvailability()` and `updateAvailability()`, for each local calendar day (`Asia/Bangkok`, `UTC+7`) overlapped by `[startTime, endTime)`, the service sums overlapping durations of open `Availability` rows (excluding `availabilityId` on `PUT`), non-cancelled `Booking` rows (`status !== 'CANCELLED'`), and `[startTime, endTime)`. If any Bangkok calendar day exceeds `8 hours`, the transaction rolls back with `400 "Daily tutor availability and booked lessons cannot exceed 8 hours per day."`
+
 ---
 
 ## 4. API Endpoint Specifications
@@ -328,15 +344,15 @@ sequenceDiagram
 * **Response (200):** `{ availabilities: Availability[], bookings: BookingDTO[] }` for open and booked windows ending in the future.
 
 #### `POST /api/tutor/availability`
-* **Access:** Requires `TUTOR` role
+* **Access:** Requires `TUTOR` role (`isApproved === true`)
 * **Request:** `{ startTime: ISO8601, endTime: ISO8601 }`
-* **Response (201):** Created `Availability` object.
-* **Validation (BR-04, BR-05):**
-  - Duration must be $\ge 1\text{ hour}$ and a whole number of hours.
-  - `startTime` must begin on `:00` or `:30`.
-  - `startTime` must be in the future.
+* **Response (201):** Created (or auto-merged adjacent) `Availability` object.
+* **Validation (BR-04, BR-05 — `CHG-03`):**
+  - Duration must be between `1` and `8` whole hours.
+  - `startTime` must begin on `:00` or `:30` and be at least **1 hour (`60 minutes`) in the future** (`startTime - now >= 1h`).
   - Must not overlap existing availability or non-cancelled bookings.
-* **Errors:** `400 Bad Request` (Invalid interval/past timestamp/overlap), `403 Forbidden` (Non-tutor).
+  - Combined open availability hours + non-cancelled booked lesson hours on the target `Asia/Bangkok` (`UTC+7`) calendar day must not exceed **8 hours**.
+* **Errors:** `400 Bad Request` (Invalid interval, `< 1h` advance lead-time, overlap, or `> 8h` daily capacity), `403 Forbidden` (Non-tutor or unapproved tutor).
 
 #### `GET /api/availability`
 * **Access:** Public / Authenticated
@@ -377,15 +393,15 @@ sequenceDiagram
   }
   ```
 * **Processing:**
-  1. Validate start time alignment (1-hour step from availability block start, `:00` or `:30`) and optional lecture attachments (<= 5 files).
+  1. Validate start time alignment (1-hour step from availability block start, `:00` or `:30`), **2-hour minimum advance cutoff** (`startTime - now >= 2h`), **1..4 whole-hour duration cap** (`BR-05`), and optional lecture attachments (<= 5 files).
   2. Verify target interval fits entirely within an active `Availability` record.
   3. Verify no overlapping confirmed bookings exist for the Tutor or the Student (BR-07).
   4. Execute mock payment simulation.
-  5. Snapshot chosen `TutorSubject.hourlyPrice` and calculate `totalPrice = hourlyPrice * durationHours`.
+  5. Snapshot chosen `TutorSubject.hourlyPrice` (`hourlyPriceSnapshot`) and calculate discounted `totalPrice` (`0%` off for `1h`, `5%` off for `2h`, `10%` off for `3h–4h` per `BR-09` / `CHG-03A`).
   6. Insert `Booking` record with `CONFIRMED` status, link/create attachments, and slice remaining availability (BR-06) inside a `Serializable` transaction.
 * **Response (201):** Confirmed `Booking` DTO including embedded `student`, `tutor`, `subject`, `attachments`, `currentHourlyPrice`, and frozen price snapshot.
 * **Errors:**
-  - `400 Bad Request` (Unverified email, past date, non-whole hour duration, invalid attachments).
+  - `400 Bad Request` (Unverified email, `< 2h` advance lead-time, non-whole hour or `> 4h` duration, invalid attachments).
   - `409 Conflict` (Concurrent booking overlap or slot unavailable).
 
 #### `GET /api/bookings`
