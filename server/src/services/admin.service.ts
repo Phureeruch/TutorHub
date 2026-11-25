@@ -1,9 +1,10 @@
 import { prisma } from '../lib/prisma.js';
+import { calculateRetainedRevenue } from '../utils/admin-metrics.js';
 
 export async function getAdminSummary() {
   const [
     totalBookings,
-    revenueResult,
+    bookings,
     activeTutors,
     verifiedStudents,
     totalStudents,
@@ -11,13 +12,12 @@ export async function getAdminSummary() {
     // Count all bookings, including cancelled bookings.
     prisma.booking.count(),
 
-    // Revenue excludes cancelled bookings.
-    prisma.booking.aggregate({
-      where: {
-        status: { not: 'CANCELLED' },
-      },
-      _sum: {
+    // Fetch booking price and refund data to calculate retained revenue (DEF-08).
+    prisma.booking.findMany({
+      select: {
+        status: true,
         totalPrice: true,
+        refundAmount: true,
       },
     }),
 
@@ -47,7 +47,7 @@ export async function getAdminSummary() {
 
   return {
     totalBookings,
-    mockRevenue: Number(revenueResult._sum.totalPrice ?? 0),
+    mockRevenue: calculateRetainedRevenue(bookings),
     activeTutors,
     verifiedStudents,
     totalStudents,
