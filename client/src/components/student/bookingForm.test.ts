@@ -54,21 +54,21 @@ describe('findStudentConflictingBooking (BR-07 preview)', () => {
   })
 })
 
-describe('windowChunks (BR-05 hour chunks)', () => {
+describe('windowChunks (BR-05 hour chunks, CHG-03B 2h cutoff)', () => {
   const at = (c: { start: Date }) => `${c.start.getHours()}:${String(c.start.getMinutes()).padStart(2, '0')}`
 
   it('splits a 09:30–12:30 window into hour chunks from its own start', () => {
-    expect(windowChunks(block, t(8)).map(at)).toEqual(['9:30', '10:30', '11:30'])
-    expect(windowChunks(block, t(8)).every((c) => c.bookable)).toBe(true)
+    expect(windowChunks(block, t(7)).map(at)).toEqual(['9:30', '10:30', '11:30'])
+    expect(windowChunks(block, t(7)).every((c) => c.bookable)).toBe(true)
   })
 
-  it('marks chunks that have already started as not bookable', () => {
-    expect(windowChunks(block, t(10)).map((c) => c.bookable)).toEqual([false, true, true])
+  it('marks chunks starting in less than 2 hours as not bookable (STS-L7-07)', () => {
+    expect(windowChunks(block, t(8)).map((c) => c.bookable)).toEqual([false, true, true])
   })
 })
 
 describe('toggleChunk (slot picker: tap each hour, back to back)', () => {
-  const chunks = windowChunks(block, t(8)) // 09:30, 10:30, 11:30
+  const chunks = windowChunks(block, t(7)) // 09:30, 10:30, 11:30
   const sel = (start: number, length: number) => ({ start, length })
 
   it('selects a single hour on the first tap', () => {
@@ -97,8 +97,21 @@ describe('toggleChunk (slot picker: tap each hour, back to back)', () => {
     expect(toggleChunk(sel(0, 3), 1, chunks)).toEqual({ selection: sel(0, 3), refused: 'split' })
   })
 
-  it('ignores taps on hours that have already started', () => {
-    const late = windowChunks(block, t(10))
+  it('refuses selecting a 5th consecutive hour (CHG-03B max 4h cap, STS-L7-07)', () => {
+    const longBlock: Availability = {
+      id: 99,
+      tutorId: 1,
+      startTime: t(9).toISOString(),
+      endTime: t(15).toISOString(),
+      createdAt: '',
+      updatedAt: '',
+    }
+    const sixChunks = windowChunks(longBlock, t(6))
+    expect(toggleChunk(sel(0, 4), 4, sixChunks)).toEqual({ selection: sel(0, 4), refused: 'max_duration' })
+  })
+
+  it('ignores taps on hours that are within the 2h cutoff', () => {
+    const late = windowChunks(block, t(8))
     expect(toggleChunk(sel(1, 1), 0, late)).toEqual({ selection: sel(1, 1), refused: null })
   })
 
@@ -108,26 +121,49 @@ describe('toggleChunk (slot picker: tap each hour, back to back)', () => {
   })
 })
 
-describe('liveSelection (hours that start while the dialog is open)', () => {
+describe('liveSelection (hours that enter the 2h cutoff while the dialog is open)', () => {
   const sel = (start: number, length: number) => ({ start, length })
 
   it('keeps a selection whose hours are all still bookable', () => {
-    expect(liveSelection(sel(0, 3), windowChunks(block, t(8)))).toEqual(sel(0, 3))
+    expect(liveSelection(sel(0, 3), windowChunks(block, t(7)))).toEqual(sel(0, 3))
   })
 
-  it('trims hours that have started instead of dropping the whole lesson', () => {
-    expect(liveSelection(sel(0, 3), windowChunks(block, t(10)))).toEqual(sel(1, 2))
+  it('trims hours that have entered the cutoff instead of dropping the whole lesson', () => {
+    expect(liveSelection(sel(0, 3), windowChunks(block, t(8)))).toEqual(sel(1, 2))
   })
 
-  it('clears the selection once every chosen hour has started', () => {
-    expect(liveSelection(sel(0, 1), windowChunks(block, t(10)))).toBeNull()
-    expect(liveSelection(null, windowChunks(block, t(8)))).toBeNull()
+  it('clears the selection once every chosen hour is unbookable', () => {
+    expect(liveSelection(sel(0, 1), windowChunks(block, t(8)))).toBeNull()
+    expect(liveSelection(null, windowChunks(block, t(7)))).toBeNull()
   })
 })
 
-describe('priceSummary (BR-09)', () => {
-  it('multiplies the current rate by the hours', () => {
-    expect(priceSummary(40, 2)).toEqual({ hourly: 40, hours: 2, total: 80 })
+describe('priceSummary (BR-09, CHG-03A, STS-L7-07)', () => {
+  it('computes subtotal, discountPercentage, discountAmount, and discounted total', () => {
+    expect(priceSummary(400, 1)).toEqual({
+      hourly: 400,
+      hours: 1,
+      subtotal: 400,
+      discountPercentage: 0,
+      discountAmount: 0,
+      total: 400,
+    })
+    expect(priceSummary(400, 2)).toEqual({
+      hourly: 400,
+      hours: 2,
+      subtotal: 800,
+      discountPercentage: 5,
+      discountAmount: 40,
+      total: 760,
+    })
+    expect(priceSummary(400, 3)).toEqual({
+      hourly: 400,
+      hours: 3,
+      subtotal: 1200,
+      discountPercentage: 10,
+      discountAmount: 120,
+      total: 1080,
+    })
   })
 })
 

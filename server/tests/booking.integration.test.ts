@@ -325,7 +325,8 @@ test('student cancellation applies 50% refund in [24h, 72h) and 0% refund in (0,
     now,
   });
   assert.equal(res50.refundPercentage, 50);
-  assert.equal(res50.refundAmount, 400);
+  // 2h booking at 400/hr has 5% bundle discount -> totalPrice = 760 -> 50% refund = 380 (BR-09, BR-11)
+  assert.equal(res50.refundAmount, 380);
 
   const res0 = await cancelBooking({
     bookingId: b0.id,
@@ -415,4 +416,107 @@ test('creating adjacent availability merges automatically and updateAvailability
   availabilityIds.push(updated.id);
   assert.equal(updated.startTime.getTime(), shiftedStart.getTime());
   assert.equal(updated.endTime.getTime(), shiftedEnd.getTime());
+});
+
+test('Lab 7 CHG-03: enforces tiered bundle discount, 2h booking cutoff, 4h booking cap, 1h tutor availability lead-time, and 8h Bangkok daily tutor capacity (STS-L7-02..STS-L7-06)', async () => {
+  const f = await createFixture();
+  await prisma.availability.deleteMany({ where: { tutorId: f.tutor.id } });
+
+  // 1. STS-L7-05: Tutor availability starting < 1h in the future is rejected with 400.
+  const lessThan1h = new Date(Date.now() + 45 * 60 * 1000);
+  lessThan1h.setUTCMinutes(lessThan1h.getUTCMinutes() < 30 ? 30 : 0, 0, 0);
+  if (lessThan1h.getTime() <= Date.now() || lessThan1h.getTime() - Date.now() >= 60 * 60 * 1000) {
+    lessThan1h.setTime(Date.now() + 30 * 60 * 1000);
+  }
+  await assert.rejects(
+    createAvailability(f.tutor.id, {
+      startTime: lessThan1h,
+      endTime: new Date(lessThan1h.getTime() + 2 * 60 * 60 * 1000),
+    }),
+    (err: unknown) =>
+      err instanceof AvailabilityError &&
+      err.statusCode === 400 &&
+      (err.message === 'Availability must start at least 1 hour in the future.' ||
+        err.message === 'Availability must start on :00 or :30.'),
+  );
+
+  // 2. STS-L7-06: On a future Bangkok calendar day (D+5, 08:00-14:00 ICT = 01:00-07:00 UTC, 6h window),
+  // Tutor creates a 6h window, Student books 2h (leaving 4h open + 2h booked = 6h committed).
+  const bkkDayBase = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+  bkkDayBase.setUTCHours(1, 0, 0, 0); // 08:00 ICT
+  const av6h = await createAvailability(f.tutor.id, {
+    startTime: bkkDayBase,
+    endTime: new Date(bkkDayBase.getTime() + 6 * 60 * 60 * 1000), // 08:00-14:00 ICT (6h)
+  });
+  availabilityIds.push(av6h.id);
+
+  // STS-L7-04: Single booking > 4 hours (5h) is rejected with 400.
+  await assert.rejects(
+    createBooking(bookingInput(f, { startTime: bkkDayBase, durationHours: 5 })),
+    (err: unknown) =>
+      err instanceof BookingError &&
+      err.statusCode === 400 &&
+      err.message === 'A single booking cannot exceed 4 hours.',
+  );
+
+  // STS-L7-02: Student books 2h (08:00-10:00 ICT) -> 5% bundle discount (400 * 2 * 0.95 = 760).
+  const b2h = await createBooking(bookingInput(f, { startTime: bkkDayBase, durationHours: 2 }));
+  bookingIds.push(b2h.id);
+  assert.equal(Number(b2h.hourlyPriceSnapshot), 400);
+  assert.equal(Number(b2h.totalPrice), 760);
+
+  // STS-L7-02: Student books 3h (10:00-13:00 ICT) -> 10% bundle discount (400 * 3 * 0.90 = 1080).
+  const b3h = await createBooking(
+    bookingInput(f, {
+      startTime: new Date(bkkDayBase.getTime() + 2 * 60 * 60 * 1000),
+      durationHours: 3,
+    }),
+  );
+  bookingIds.push(b3h.id);
+  assert.equal(Number(b3h.hourlyPriceSnapshot), 400);
+  assert.equal(Number(b3h.totalPrice), 1080);
+
+  // Tutor now has 5h booked + 1h remaining open (13:00-14:00 ICT) = 6h on that Bangkok day.
+  // STS-L7-06(a): Adding 3h (15:00-18:00 ICT, bringing total to 9h) is rejected with 400.
+  const bkk15 = new Date(bkkDayBase.getTime() + 7 * 60 * 60 * 1000); // 15:00 ICT
+  await assert.rejects(
+    createAvailability(f.tutor.id, {
+      startTime: bkk15,
+      endTime: new Date(bkk15.getTime() + 3 * 60 * 60 * 1000),
+    }),
+    (err: unknown) =>
+      err instanceof AvailabilityError &&
+      err.statusCode === 400 &&
+      err.message === 'Daily tutor availability and booked lessons cannot exceed 8 hours per day.',
+  );
+
+  // STS-L7-06(b): Adding 2h (15:00-17:00 ICT, bringing total to exact 8h boundary) succeeds!
+  const av2h = await createAvailability(f.tutor.id, {
+    startTime: bkk15,
+    endTime: new Date(bkk15.getTime() + 2 * 60 * 60 * 1000),
+  });
+  availabilityIds.push(av2h.id);
+
+  // 3. STS-L7-03: Student booking starting < 2h in the future is rejected with 400.
+  const soonStart = new Date(Date.now() + 60 * 60 * 1000);
+  soonStart.setUTCMinutes(0, 0, 0);
+  if (soonStart.getTime() <= Date.now()) {
+    soonStart.setTime(soonStart.getTime() + 60 * 60 * 1000);
+  }
+  const soonAv = await prisma.availability.create({
+    data: {
+      tutorId: f.tutor.id,
+      startTime: soonStart,
+      endTime: new Date(soonStart.getTime() + 2 * 60 * 60 * 1000),
+    },
+  });
+  availabilityIds.push(soonAv.id);
+
+  await assert.rejects(
+    createBooking(bookingInput(f, { startTime: soonStart, durationHours: 1 })),
+    (err: unknown) =>
+      err instanceof BookingError &&
+      err.statusCode === 400 &&
+      err.message === 'Bookings must be made at least 2 hours before the lesson starts.',
+  );
 });

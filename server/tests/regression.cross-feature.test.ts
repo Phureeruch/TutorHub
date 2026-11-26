@@ -33,17 +33,17 @@ describe('Cross-Feature Regression Suite (Deliverable 2 Release Candidate — v2
       });
       assert.deepEqual(validationResult, { valid: true });
 
-      // 3. Price snapshot calculation (BR-09)
+      // 3. Price snapshot calculation (BR-09, CHG-03A)
       const hourlyPrice = 500;
       const priceResult = calculateBookingPrice({ hourlyPrice, durationHours: 1 });
       assert.equal(priceResult.totalPrice, 500);
       assert.equal(priceResult.hourlyPriceSnapshot, 500);
 
       const price2h = calculateBookingPrice({ hourlyPrice, durationHours: 2 });
-      assert.equal(price2h.totalPrice, 1000);
+      assert.equal(price2h.totalPrice, 950);
 
       const price3h = calculateBookingPrice({ hourlyPrice, durationHours: 3 });
-      assert.equal(price3h.totalPrice, 1500);
+      assert.equal(price3h.totalPrice, 1350);
 
       // 4. Overlapping booking conflict prevention (BR-07, NFR-04)
       const existingBookings = [
