@@ -279,7 +279,7 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   assert.equal(profilePut.body.subjects[0]?.hourlyPrice, 450);
 
   // Tutor adds availability via POST /api/tutor/availability
-  const start = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  const start = new Date(Date.now() + 4 * 60 * 60 * 1000);
   start.setUTCMinutes(30, 0, 0);
   const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
 
@@ -512,4 +512,119 @@ test('end-to-end HTTP booking with multipart attachment upload, retrieval, and r
   });
   assert.equal(dupSubject.status, 409);
   assert.equal(dupSubject.body.message, 'A subject with this name already exists.');
+});
+
+test('Lab 7 HTTP API: enforces tiered bundle discount, price snapshot invariance, 2h booking cutoff, 4h booking cap, and 8h daily tutor capacity (STS-L7-02..STS-L7-06)', async () => {
+  const { user: student, password: studentPwd } = await seedUser('STUDENT', { verified: true });
+  const { user: tutor, password: tutorPwd } = await seedUser('TUTOR', { approved: true });
+
+  const profile = await prisma.tutorProfile.create({
+    data: { userId: tutor.id, bio: 'Lab 7 HTTP test tutor' },
+  });
+  tutorProfileIds.push(profile.id);
+
+  const subject = await prisma.subject.create({
+    data: { name: `Lab 7 Subject ${randomUUID()}` },
+  });
+  subjectIds.push(subject.id);
+
+  const tutorToken = await loginAs(tutor.email, tutorPwd);
+  const studentToken = await loginAs(student.email, studentPwd);
+
+  const putProfile = await apiJson('/api/tutor/profile', {
+    method: 'PUT',
+    token: tutorToken,
+    body: JSON.stringify({
+      bio: 'Lab 7 tutor',
+      subjects: [{ subjectId: subject.id, hourlyPrice: 400, levels: ['UNDERGRADUATE'], topics: 'Algorithms' }],
+    }),
+  });
+  assert.equal(putProfile.status, 200);
+
+  // STS-L7-06: Single availability > 8h (9h) is rejected with 400
+  const bkkDay = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
+  bkkDay.setUTCHours(1, 0, 0, 0); // 08:00 ICT
+  const bad9hAv = await apiJson<{ message: string }>('/api/tutor/availability', {
+    method: 'POST',
+    token: tutorToken,
+    body: JSON.stringify({
+      startTime: bkkDay.toISOString(),
+      endTime: new Date(bkkDay.getTime() + 9 * 60 * 60 * 1000).toISOString(),
+    }),
+  });
+  assert.equal(bad9hAv.status, 400);
+  assert.equal(bad9hAv.body.message, 'Daily tutor availability and booked lessons cannot exceed 8 hours per day.');
+
+  // Tutor publishes 6h window (08:00-14:00 ICT)
+  const av6hRes = await apiJson<{ id: number }>('/api/tutor/availability', {
+    method: 'POST',
+    token: tutorToken,
+    body: JSON.stringify({
+      startTime: bkkDay.toISOString(),
+      endTime: new Date(bkkDay.getTime() + 6 * 60 * 60 * 1000).toISOString(),
+    }),
+  });
+  assert.equal(av6hRes.status, 201);
+  availabilityIds.push(av6hRes.body.id);
+
+  // STS-L7-04: Student booking 5h is rejected with 400
+  const bad5hBook = await apiJson<{ message: string }>('/api/bookings', {
+    method: 'POST',
+    token: studentToken,
+    body: JSON.stringify({
+      tutorId: tutor.id,
+      subjectId: subject.id,
+      startTime: bkkDay.toISOString(),
+      durationHours: 5,
+    }),
+  });
+  assert.equal(bad5hBook.status, 400);
+  assert.equal(bad5hBook.body.message, 'A single booking cannot exceed 4 hours.');
+
+  // STS-L7-02: Student books 2h -> 5% bundle discount (760 THB)
+  const book2h = await apiJson<{ id: number; hourlyPriceSnapshot: number; totalPrice: number }>('/api/bookings', {
+    method: 'POST',
+    token: studentToken,
+    body: JSON.stringify({
+      tutorId: tutor.id,
+      subjectId: subject.id,
+      startTime: bkkDay.toISOString(),
+      durationHours: 2,
+    }),
+  });
+  assert.equal(book2h.status, 201);
+  bookingIds.push(book2h.body.id);
+  assert.equal(book2h.body.hourlyPriceSnapshot, 400);
+  assert.equal(book2h.body.totalPrice, 760);
+
+  // STS-L7-02: Tutor raises rate to 600 THB/hr; existing 2h booking stays frozen at 400 / 760
+  await apiJson('/api/tutor/profile', {
+    method: 'PUT',
+    token: tutorToken,
+    body: JSON.stringify({
+      bio: 'Lab 7 tutor',
+      subjects: [{ subjectId: subject.id, hourlyPrice: 600, levels: ['UNDERGRADUATE'], topics: 'Algorithms' }],
+    }),
+  });
+  const checkFrozen = await apiJson<{ hourlyPriceSnapshot: number; totalPrice: number; currentHourlyPrice: number }>(
+    `/api/bookings/${book2h.body.id}`,
+    { token: studentToken },
+  );
+  assert.equal(checkFrozen.status, 200);
+  assert.equal(checkFrozen.body.hourlyPriceSnapshot, 400);
+  assert.equal(checkFrozen.body.totalPrice, 760);
+  assert.equal(checkFrozen.body.currentHourlyPrice, 600);
+
+  // STS-L7-06: Tutor already has 2h booked + 4h open = 6h on that Bangkok day. Adding 3h (15:00-18:00 ICT) -> 400
+  const bkk15 = new Date(bkkDay.getTime() + 7 * 60 * 60 * 1000);
+  const badDailyCap = await apiJson<{ message: string }>('/api/tutor/availability', {
+    method: 'POST',
+    token: tutorToken,
+    body: JSON.stringify({
+      startTime: bkk15.toISOString(),
+      endTime: new Date(bkk15.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+    }),
+  });
+  assert.equal(badDailyCap.status, 400);
+  assert.equal(badDailyCap.body.message, 'Daily tutor availability and booked lessons cannot exceed 8 hours per day.');
 });

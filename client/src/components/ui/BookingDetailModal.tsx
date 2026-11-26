@@ -172,6 +172,12 @@ export function BookingDetailModal({ bookingId, onClose, onCancelled }: BookingD
             </dd>
           </>
         )}
+        {booking.status === 'COMPLETED' && booking.lessonSummary && (
+          <>
+            <dt>Lesson notes &amp; homework</dt>
+            <dd style={{ whiteSpace: 'pre-wrap' }}>{booking.lessonSummary}</dd>
+          </>
+        )}
         <dt>Student notes</dt>
         <dd>{booking.notes ?? 'None'}</dd>
         <dt>Lecture files</dt>

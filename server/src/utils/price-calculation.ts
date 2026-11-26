@@ -1,11 +1,28 @@
+export const MAX_BOOKING_DURATION_HOURS = 4;
+
 interface CalculateBookingPriceInput {
   hourlyPrice: number;
   durationHours: number;
 }
 
-interface BookingPrice {
+export interface BookingPrice {
   hourlyPriceSnapshot: number;
+  basePrice: number;
+  discountPercentage: 0 | 5 | 10;
+  discountAmount: number;
   totalPrice: number;
+}
+
+function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export function getBundleDiscountPercentage(
+  durationHours: number,
+): 0 | 5 | 10 {
+  if (durationHours <= 1) return 0;
+  if (durationHours === 2) return 5;
+  return 10;
 }
 
 export function calculateBookingPrice(
@@ -24,13 +41,21 @@ export function calculateBookingPrice(
     throw new Error('Duration must be a positive whole number of hours');
   }
 
-  const total = hourlyPrice * durationHours;
+  if (durationHours > MAX_BOOKING_DURATION_HOURS) {
+    throw new Error('A single booking cannot exceed 4 hours.');
+  }
 
-  const totalPrice =
-    Math.round((total + Number.EPSILON) * 100) / 100;
+  const basePrice = roundCurrency(hourlyPrice * durationHours);
+  const discountPercentage = getBundleDiscountPercentage(durationHours);
+  const multiplier = (100 - discountPercentage) / 100;
+  const totalPrice = roundCurrency(hourlyPrice * durationHours * multiplier);
+  const discountAmount = roundCurrency(basePrice - totalPrice);
 
   return {
     hourlyPriceSnapshot: hourlyPrice,
+    basePrice,
+    discountPercentage,
+    discountAmount,
     totalPrice,
   };
 }

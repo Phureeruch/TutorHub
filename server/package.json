@@ -12,7 +12,7 @@
     "seed": "tsx prisma/seed.ts",
     "prisma:seed": "tsx prisma/seed.ts",
     "test": "tsx --test ./tests/*.test.ts",
-    "test:unit": "tsx --test ./tests/booking-overlap.test.ts ./tests/price-calculation.test.ts ./tests/time.validation.test.ts ./tests/refund-calculation.test.ts ./tests/interval-merge.test.ts ./tests/discovery-filter.test.ts ./tests/admin-management.test.ts ./tests/admin-metrics.test.ts"
+    "test:unit": "tsx --test ./tests/booking-overlap.test.ts ./tests/price-calculation.test.ts ./tests/time.validation.test.ts ./tests/refund-calculation.test.ts ./tests/interval-merge.test.ts ./tests/discovery-filter.test.ts ./tests/admin-management.test.ts ./tests/admin-metrics.test.ts ./tests/lesson-completion.test.ts ./tests/regression.cross-feature.test.ts"
   },
   "keywords": [],
   "author": "",

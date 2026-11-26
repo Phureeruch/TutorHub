@@ -39,6 +39,7 @@ const ACCEPTED_FILES = '.pdf,.ppt,.pptx,.doc,.docx,.txt,.png,.jpg,.jpeg'
 const REFUSAL_MESSAGE: Record<ChunkRefusal, string> = {
   gap: 'Pick an hour next to the ones you chose. A lesson is one block of time with no gaps.',
   split: 'Remove hours from either end. Taking out a middle hour would split the lesson in two.',
+  max_duration: 'A single booking cannot exceed 4 hours.',
 }
 
 export function BookingModal({ listing, availability, preferredSubjectId, onClose, onBooked }: BookingModalProps) {
@@ -332,6 +333,18 @@ export function BookingModal({ listing, availability, preferredSubjectId, onClos
         </div>
 
         <div className="th-receipt mt-3" aria-live="polite">
+          {start && price.discountPercentage > 0 && (
+            <>
+              <div className="th-receipt-line small text-muted-ink mb-1">
+                <span>Subtotal ({`${formatRate(price.hourly)} × ${formatHours(price.hours)}`})</span>
+                <span>{formatMoney(price.subtotal)}</span>
+              </div>
+              <div className="th-receipt-line small text-success mb-1">
+                <span>{`Multi-hour discount (${price.discountPercentage}% off)`}</span>
+                <span>{`-${formatMoney(price.discountAmount)}`}</span>
+              </div>
+            </>
+          )}
           <div className="th-receipt-line">
             <span>
               {start ? `${formatRate(price.hourly)} × ${formatHours(price.hours)}` : `${formatRate(price.hourly)}, pick hours`}

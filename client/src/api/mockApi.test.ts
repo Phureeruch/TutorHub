@@ -258,10 +258,39 @@ describe('createBooking (FR-08..FR-10)', () => {
     })
   })
 
-  it("snapshots the chosen subject's own rate (per-subject pricing)", () => {
+  it("snapshots the chosen subject's own rate and applies 5% multi-hour bundle discount for 2h (CHG-03A, STS-L7-02)", () => {
     const before = fresh()
     const { data } = createBooking(before, charlie(before), { ...partial, subjectId: 2, durationHours: 2 }, { now: NOW })
-    expect(data).toMatchObject({ hourlyPriceSnapshot: 450, totalPrice: 900 })
+    expect(data).toMatchObject({ hourlyPriceSnapshot: 450, totalPrice: 855 })
+  })
+
+  it('rejects a booking starting in less than 2 hours with 400 (CHG-03B, STS-L7-03)', () => {
+    const before = fresh()
+    const oneHourBefore = new Date(new Date(day(1, 9, 30)).getTime() - 60 * 60 * 1000)
+    const err = apiErrorOf(() =>
+      createBooking(before, charlie(before), { ...partial, startTime: day(1, 9, 30) }, { now: oneHourBefore }),
+    )
+    expect(err.status).toBe(400)
+    expect(err.message).toBe('Bookings must be made at least 2 hours before the lesson starts.')
+  })
+
+  it('rejects a single booking exceeding 4 hours with 400 (CHG-03B, STS-L7-04)', () => {
+    const before = fresh()
+    const err = apiErrorOf(() =>
+      createBooking(before, charlie(before), { ...partial, durationHours: 5 }, { now: NOW }),
+    )
+    expect(err.status).toBe(400)
+    expect(err.message).toBe('A single booking cannot exceed 4 hours.')
+  })
+
+  it('rejects tutor availability exceeding 8 hours combined on a single calendar day with 400 (CHG-03C, STS-L7-06)', () => {
+    const before = fresh()
+    // Alice already has D+1 09:30–12:30 (3h). Adding D+1 12:30–18:30 (6h -> 9h total) must fail with 400.
+    const err = apiErrorOf(() =>
+      createAvailability(before, userOf(before, ALICE), { startTime: day(1, 12, 30), endTime: day(1, 18, 30) }, NOW),
+    )
+    expect(err.status).toBe(400)
+    expect(err.message).toBe('Daily tutor availability and booked lessons cannot exceed 8 hours per day.')
   })
 
   it('stores optional lecture-file details with the booking', () => {

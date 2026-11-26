@@ -3,7 +3,8 @@
 
 **Draft 2 – Revised Requirements (Post-Clarification)**  
 **Revision 2.1 (Sprint 1 review):** per-subject hourly prices, teaching levels and topics (FR-05), and optional lecture-file attachments on bookings (§4.1, FR-08, BR-08) moved into scope.  
-**Revision 2.2 (Lab 7 adaptive maintenance — `CHG-03`, Issue `#54`):** added 1-hour tutor availability publication notice and 8-hour daily teaching capacity limit (`FR-06`, `BR-04`), 2-hour advance student booking cutoff and 4-hour maximum single-booking duration cap (`FR-08`, `BR-05`), and 3-tier multi-hour bundle discount (`0%` for 1h, `5%` for 2h, `10%` for 3h–4h) on frozen booking `totalPrice` snapshots (`FR-10`, `BR-09`).
+**Revision 2.2 (Lab 7 adaptive maintenance — `CHG-03`, Issue `#54`):** added 1-hour tutor availability publication notice and 8-hour daily teaching capacity limit (`FR-06`, `BR-04`), 2-hour advance student booking cutoff and 4-hour maximum single-booking duration cap (`FR-08`, `BR-05`), and 3-tier multi-hour bundle discount (`0%` for 1h, `5%` for 2h, `10%` for 3h–4h) on frozen booking `totalPrice` snapshots (`FR-10`, `BR-09`).  
+**Revision 2.3 (Deliverable 2 Release Candidate baseline reconciliation — Issue `#44`):** integrated and verified F-16 (Tutor Lesson Completion & Homework Notes) workflow on top of Sprint 2 baseline, specified 1..2,000 character length bounds, tutor ownership validation, and post-completion cancellation rejection (`FR-13`, `BR-14`).
 
 ## 1. Introduction
 
@@ -139,7 +140,7 @@ Students shall be able to view their own bookings. Tutors shall be able to view 
 Students and Tutors shall be able to cancel bookings. The system shall calculate refunds automatically according to the business rules.
 
 **FR-13: Lesson Completion**  
-Tutors shall be able to mark a lesson as completed and add a lesson summary or homework.
+The assigned Tutor shall be able to mark a CONFIRMED lesson as completed and add a lesson summary or homework notes (1 to 2,000 characters). The recorded lesson summary shall be persisted and visible to the Student, Tutor, and Admin.
 
 ### 5.5 Reviews and Ratings
 
@@ -194,8 +195,8 @@ A Tutor may cancel a confirmed booking only prior to the scheduled lesson start 
 **BR-13: Availability Restoration and Interval Merging**  
 When a Student cancels a booking, the released time period is restored to available status and automatically merged with any adjacent available time periods for the same Tutor, reconstructing a continuous availability block (e.g., a released 1-hour block between two 1-hour blocks merges back into a single 3-hour availability block). Time periods cancelled by a Tutor (BR-12) remain blocked and are never restored or merged.
 
-**BR-14: Lesson Completion and Reviews**  
-Tutors may mark lessons as completed. Students may review only completed bookings. Each booking may have only one review, which the Student may edit.
+**BR-14: Lesson Completion, Non-Cancellability and Reviews**  
+Only the assigned Tutor may mark a CONFIRMED booking as COMPLETED while providing a non-empty lesson summary / homework note between 1 and 2,000 characters. Once marked COMPLETED, the booking is permanently non-cancellable by either Student or Tutor (subsequent cancellation attempts are rejected with 409 Conflict). Students may review only completed bookings. Each booking may have only one review, which the Student may edit.
 
 **BR-15: Historical Records**  
 The system shall retain relevant booking, payment, cancellation, and refund records for audit and reference purposes.

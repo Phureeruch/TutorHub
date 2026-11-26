@@ -133,7 +133,7 @@ describe('account menu', () => {
 })
 
 describe('booking modal slot picker, subject pricing and files', () => {
-  it('picks a start hour on the ruler and stretches the lesson by tapping a later hour', async () => {
+  it('picks a start hour on the ruler, stretches the lesson by tapping a later hour, and applies the 5% bundle discount (STS-L7-07)', async () => {
     const user = userEvent.setup()
     renderAppAt('/student/discover', SEED.CHARLIE)
     const [aliceTomorrow] = await screen.findAllByRole('button', { name: /^Book Alice on/ })
@@ -146,10 +146,11 @@ describe('booking modal slot picker, subject pricing and files', () => {
     expect(within(dialog).getByRole('button', { name: /^10:30–11:30/ }).getAttribute('aria-pressed')).toBe('true')
     expect(within(dialog).getByRole('button', { name: /^11:30–12:30/ }).getAttribute('aria-pressed')).toBe('true')
     expect(within(dialog).getByRole('button', { name: /^09:30–10:30/ }).getAttribute('aria-pressed')).toBe('false')
-    expect(within(dialog).getByRole('button', { name: 'Pay ฿800 and confirm' })).toBeTruthy()
+    expect(within(dialog).getByText(/Multi-hour discount \(5% off\)/)).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: 'Pay ฿760 and confirm' })).toBeTruthy()
   })
 
-  it('lets the student tap each hour, totals them, and refuses gaps or splits', async () => {
+  it('lets the student tap each hour, totals them with 5% and 10% bundle discounts, and refuses gaps or splits (STS-L7-07)', async () => {
     const user = userEvent.setup()
     renderAppAt('/student/discover', SEED.CHARLIE)
     const [aliceTomorrow] = await screen.findAllByRole('button', { name: /^Book Alice on/ })
@@ -166,16 +167,17 @@ describe('booking modal slot picker, subject pricing and files', () => {
 
     await user.click(hour(/^10:30–11:30/))
     await user.click(hour(/^11:30–12:30/))
-    expect(pay('฿1,200')).toBeTruthy()
+    expect(within(dialog).getByText(/Multi-hour discount \(10% off\)/)).toBeTruthy()
+    expect(pay('฿1,080')).toBeTruthy()
     expect(within(dialog).queryByText(/next to the ones you chose/)).toBeNull()
 
     await user.click(hour(/^10:30–11:30/))
     expect(within(dialog).getByText(/would split the lesson/)).toBeTruthy()
-    expect(pay('฿1,200')).toBeTruthy()
+    expect(pay('฿1,080')).toBeTruthy()
 
     await user.click(hour(/^09:30–10:30/))
     expect(within(dialog).getByText('10:30–12:30')).toBeTruthy()
-    expect(pay('฿800')).toBeTruthy()
+    expect(pay('฿760')).toBeTruthy()
   })
 
   it('shows what the tutor covers in the chosen subject', async () => {

@@ -1,6 +1,10 @@
 import type { Availability, Booking, PaymentStatus } from '../types/types'
 
 export const HOUR_MS = 60 * 60 * 1000
+export const MIN_AVAILABILITY_LEAD_MS = 1 * HOUR_MS
+export const MAX_DAILY_TUTOR_HOURS = 8
+export const MIN_BOOKING_LEAD_MS = 2 * HOUR_MS
+export const MAX_BOOKING_DURATION_HOURS = 4
 
 export type ValidationResult = { ok: true } | { ok: false; error: string }
 
@@ -9,7 +13,7 @@ export interface Interval {
   end: Date
 }
 
-/** BR-04: ≥ 1h, whole hours, starting on :00 or :30, and (optionally) in the future. */
+/** BR-04 (CHG-03C): 1..8h, whole hours, starting on :00 or :30, and (optionally) >= 1h in the future. */
 export function validateAvailabilityInput(startTime: Date, endTime: Date, now?: Date): ValidationResult {
   const minutes = startTime.getMinutes()
   if ((minutes !== 0 && minutes !== 30) || startTime.getSeconds() !== 0 || startTime.getMilliseconds() !== 0) {
@@ -22,8 +26,11 @@ export function validateAvailabilityInput(startTime: Date, endTime: Date, now?: 
   if (duration % HOUR_MS !== 0) {
     return { ok: false, error: 'Availability must last a whole number of hours.' }
   }
-  if (now && startTime.getTime() <= now.getTime()) {
-    return { ok: false, error: 'Availability must start in the future.' }
+  if (duration > MAX_DAILY_TUTOR_HOURS * HOUR_MS) {
+    return { ok: false, error: 'Daily tutor availability and booked lessons cannot exceed 8 hours per day.' }
+  }
+  if (now && startTime.getTime() - now.getTime() < MIN_AVAILABILITY_LEAD_MS) {
+    return { ok: false, error: 'Availability must start at least 1 hour in the future.' }
   }
   return { ok: true }
 }
@@ -40,9 +47,9 @@ export function hourStarts(availability: Availability): Date[] {
   return starts
 }
 
-/** BR-05: bookable start times, i.e. hour starts still in the future when `now` is given. */
+/** BR-05 (CHG-03B): bookable start times, i.e. hour starts at least 2 hours in the future when `now` is given. */
 export function getValidStartSlots(availability: Availability, now?: Date): Date[] {
-  return hourStarts(availability).filter((s) => !now || s.getTime() > now.getTime())
+  return hourStarts(availability).filter((s) => !now || s.getTime() - now.getTime() >= MIN_BOOKING_LEAD_MS)
 }
 
 export function isAlignedBookingStart(availability: Availability, bookingStart: Date): boolean {
@@ -89,9 +96,37 @@ export function hasBookingOverlap(
   )
 }
 
-/** BR-09: total is fixed from the snapshot at confirmation time. */
+const roundCurrency = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100
+
+export interface PriceBreakdown {
+  subtotal: number
+  discountPercentage: 0 | 5 | 10
+  discountAmount: number
+  total: number
+}
+
+export function getBundleDiscountPercentage(durationHours: number): 0 | 5 | 10 {
+  if (durationHours <= 1) return 0
+  if (durationHours === 2) return 5
+  return 10
+}
+
+/** BR-09 (CHG-03A): 3-tier multi-hour bundle discount (0% for 1h, 5% for 2h, 10% for 3h-4h). */
+export function calculatePriceBreakdown(hourlyPriceSnapshot: number, durationHours: number): PriceBreakdown {
+  if (durationHours <= 0) {
+    return { subtotal: 0, discountPercentage: 0, discountAmount: 0, total: 0 }
+  }
+  const subtotal = roundCurrency(hourlyPriceSnapshot * durationHours)
+  const discountPercentage = getBundleDiscountPercentage(durationHours)
+  const multiplier = (100 - discountPercentage) / 100
+  const total = roundCurrency(hourlyPriceSnapshot * durationHours * multiplier)
+  const discountAmount = roundCurrency(subtotal - total)
+  return { subtotal, discountPercentage, discountAmount, total }
+}
+
+/** BR-09: total is fixed from the snapshot at confirmation time (including bundle discount). */
 export function calculateTotalPrice(hourlyPriceSnapshot: number, durationHours: number): number {
-  return hourlyPriceSnapshot * durationHours
+  return calculatePriceBreakdown(hourlyPriceSnapshot, durationHours).total
 }
 
 export interface RefundPreview {
@@ -100,8 +135,6 @@ export interface RefundPreview {
   paymentStatus: PaymentStatus
   hoursUntilStart: number
 }
-
-const roundCurrency = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100
 
 /** BR-11: 3-tier student cancellation refund calculation. */
 export function calculateStudentRefund(

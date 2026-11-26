@@ -1,61 +1,70 @@
 # Requirements Traceability Matrix (RTM) — TutorHub
 
-**Version:** 2.0 (Aligned with SRS Draft 2)  
-**Authors:** Korapin Manochokecharoen, Phureeruch Satithangkul  
-**Course:** CPE 334  
+**Version:** 2.1 (Deliverable 2 Baseline Reconciliation — `v2.1.0-d2-rc`)  
+**Date:** 2026-11-26  
+**Authors:** Korapin Manoprasertkoon (`67070503458`), Phureeruch Satithangkul (`67070503471`)  
+**Course:** CPE 334 — Deliverable 2 (Parts A, D, E)  
 
 ---
 
-## 1. Functional Requirements Traceability
+## 1. Unified Requirements Traceability Matrix (FR, BR, NFR)
 
-| ID | Requirement Description | Implementation Component / Architectural Mechanism | Sprint | Responsible | Verification Method |
-|:---|:---|:---|:---:|:---|:---|
-| **FR-01** | User Authentication (Login/Logout) | `POST /api/auth/login`, `GET /api/auth/me`, `authenticate` (`middleware/auth.ts`), client sign-out | 1 | Korapin | Automated API Integration Test |
-| **FR-02** | Registration & Account Management | `POST /api/auth/register`, `PATCH /api/admin/tutors/:id/approve` | 1, 2 | Korapin | Automated API Integration Test |
-| **FR-03** | Role-Based Access Control | `requireRole` (`middleware/auth.ts`), `Role` enum in Prisma | 1 | Korapin | Automated Unit & Security Test |
-| **FR-04** | Mock Email Verification & Password Reset | `POST /api/auth/verify-email`, `POST /api/auth/reset-password` | 1 | Korapin | Automated API Integration Test |
-| **FR-05** | Tutor Profile, Subject & Hourly Price Mgmt | `GET/PUT /api/tutor/profile` (`tutor.service.ts`), `POST /api/admin/subjects` | 1, 2 | Korapin | Automated API Integration Test |
-| **FR-06** | Tutor Availability Management | `GET/POST /api/tutor/availability`, `DELETE /api/tutor/availability/:id` (`availability.service.ts`) | 1, 2 | Korapin | Automated API Integration Test |
-| **FR-07** | Student Tutor Discovery & Availability Browsing | `GET /api/availability`, `GET /api/subjects`, `GET /api/tutors` (`discovery.service.ts`) | 1, 2 | Korapin | Automated API Integration Test |
-| **FR-08** | Booking Creation with Duration Selection & Attachments | `POST /api/bookings`, `POST/GET /api/attachments` (`booking.service.ts`, `attachment.service.ts`) | 1 | Phureeruch | Automated API Integration Test |
-| **FR-09** | Booking Conflict Prevention | `booking.service.ts`, `utils/booking-overlap.ts`, GiST exclusion constraints | 1 | Phureeruch | Automated Integration Test |
-| **FR-10** | Mock Payment & Price Snapshot | `booking.service.ts`, `utils/price-calculation.ts`, `hourlyPriceSnapshot` in `Booking` model | 1 | Phureeruch | Automated Unit & Integration Test |
-| **FR-11** | Booking Information Retrieval (Role-Filtered) | `GET /api/bookings`, `GET /api/bookings/:id`, `GET /api/admin/summary` | 1 | Phureeruch | Automated API Integration Test |
-| **FR-12** | Booking Cancellation & Automatic Refund | `PATCH /api/bookings/:id/cancel` (3-tier refund & tutor cancellation) | 2 | Phureeruch | Automated Unit & Integration Test |
-| **FR-13** | Lesson Completion & Homework Notes | `PATCH /api/bookings/:id/complete` (`lessonSummary`) | 3 | Korapin | Automated API Integration Test |
-| **FR-14** | Student Reviews & In-Place Editing | `POST /api/reviews`, `PUT /api/reviews/:id` | 3 | Phureeruch | Automated API Integration Test |
-| **FR-15** | Tutor Average Rating Display | `GET /api/tutors/:id/reviews` (Aggregate average rating) | 3 | Korapin | Automated Unit Test |
-
----
-
-## 2. Business Rules Traceability
-
-| ID | Business Rule | Enforcement Mechanism | Sprint | Responsible | Verification Method |
-|:---|:---|:---|:---:|:---|:---|
-| **BR-01** | User Roles (STUDENT, TUTOR, ADMIN) | Database `Role` enum + `requireRole` (`middleware/auth.ts`) | 1 | Phureeruch | Database Schema & Unit Test |
-| **BR-02** | Account Creation & Verification | `isEmailVerified` check in `POST /api/bookings`, `isApproved` tutor check | 1 | Korapin | Automated API Test (400 if unverified) |
-| **BR-03** | Access Permissions & Resource Ownership | Server-side ownership checks (`res.locals.user.id === resource.userId`) | 1 | Korapin | Automated Security Test (403 Forbidden) |
-| **BR-04** | Availability Duration & Start Times | Validation: $\ge 1\text{h}$, whole hours, start time on `:00` or `:30` | 1 | Korapin | Automated Unit Test |
-| **BR-05** | Booking Alignment (No Dead Fragments) | `utils/time.validation.ts`: 1-hour interval from availability start, whole hours | 1 | Phureeruch | Automated Unit Test |
-| **BR-06** | Availability & Partial Booking | Dynamic availability interval slicing in `booking.service.ts` | 1 | Phureeruch | Automated Unit & Integration Test |
-| **BR-07** | Booking Conflict Prevention | Overlap check (`booking-overlap.ts` + query + GiST exclusion constraints) | 1 | Phureeruch | Automated Integration Test (409 Conflict) |
-| **BR-08** | Booking Confirmation & Atomic Rollback | `prisma.$transaction` (`Serializable`) rollback on race collision | 1 | Phureeruch | Concurrent Load Test |
-| **BR-09** | Price Snapshot | Frozen `hourlyPriceSnapshot` and `totalPrice` (`utils/price-calculation.ts`) | 1 | Phureeruch | Automated Integration Test |
-| **BR-10** | Confirmed Booking Changes (Cancel & Rebook) | Immutable schedule fields on confirmed bookings | 2 | Phureeruch | Automated API Test |
-| **BR-11** | Student Cancellation 3-Tier Refund | `refund.service.ts`: 100% ($\ge 72\text{h}$), 50% ($[24\text{h}, 72\text{h})$), 0% ($< 24\text{h}$) | 2 | Phureeruch | Automated Unit Test (Boundary Tests) |
-| **BR-12** | Tutor Cancellation Policy | 100% refund to student, time permanently blocked (no reopening) | 2 | Phureeruch | Automated Integration Test |
-| **BR-13** | Availability Restoration & Interval Merging | `mergeAdjacentIntervals()` algorithm in `availability.service.ts` | 2 | Phureeruch | Automated Unit Test |
-| **BR-14** | Lesson Completion & Review Policy | Only `COMPLETED` bookings reviewable; `@unique([bookingId])`; editable | 3 | Phureeruch | Automated API Test |
-| **BR-15** | Historical Records Audit | Soft-delete / status preservation in `Booking` and `PaymentStatus` | 2, 3 | Phureeruch | Automated Data Audit Test |
+| Requirement | Feature / Responsibility | Sprint | AC / NFR Verification | Planned Test ID | Actual Test File / Test or Measurement | Result & Version |
+|:---|:---|:---:|:---|:---:|:---|:---:|
+| **FR-01** (User Authentication) | **F-01** / Korapin | 1 | Authenticate Student, Tutor, Admin with JWT tokens; secure logout; session state persistence | `STS-01.1` | `server/tests/api.integration.test.ts` ("auth register returns token + user and allows immediate email verification") | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-02** (Registration & Account Mgmt) | **F-01**, **F-13** / Korapin | 1, 2 | Student self-registration with non-blank name validation (`CHG-01`, `#46`); Admin approves Tutor accounts | `STS-01.2`, `STS-13.1` | `server/tests/api.integration.test.ts` ("rejects student registration when full name is blank"), `server/tests/admin-management.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-03** (Role-Based Access Control) | **F-01**, **F-07** / Korapin | 1 | Restrict endpoints by role (STUDENT, TUTOR, ADMIN); unauthenticated receives 401; unauthorized receives 403 | `STS-01.3` | `server/tests/api.integration.test.ts` ("rejects unauthenticated requests to /api/bookings with 401"), `server/tests/lesson-completion.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-04** (Mock Verification & Reset) | **F-01** / Korapin | 1 | Simulated email verification required before booking; simulated password reset succeeds cleanly | `STS-01.4` | `server/tests/api.integration.test.ts`, `server/tests/booking.integration.test.ts` ("rejects a student who has not verified their email") | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-05** (Tutor Profile & Subject Catalog) | **F-02**, **F-13** / Korapin | 1, 2 | Tutors configure per-subject hourly prices, teaching levels, and topics; Admin manages subject catalog | `STS-02.1`, `STS-13.3` | `server/tests/admin-management.test.ts` (`validateSubjectInput`), `client/src/App.test.tsx` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-06** (Tutor Availability Mgmt) | **F-02**, **F-12** / Korapin | 1, 2 | 1..8h duration on :00/:30; $\ge 1\text{h}$ lead-time; $\le 8\text{h}$ daily capacity (`BR-04`); auto-merges adjacent intervals | `STS-02.2`, `STS-12.1` | `server/tests/interval-merge.test.ts` (`mergeAdjacentIntervals`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-07** (Discovery & Browsing) | **F-03**, **F-09** / Korapin | 1, 2 | Filter availability by subject, tutor, date, teaching level, and Bangkok time window (`startHour`, `endHour`) | `STS-03.1`, `STS-09.1`–`09.4` | `server/tests/discovery-filter.test.ts` (`validateDiscoveryTimeWindow`, `isSlotInBangkokTimeWindow`), `client/src/DiscoverySearch.test.tsx` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-08** (Booking Creation & Attachments) | **F-04** / Phureeruch | 1 | Book $\ge 2\text{h}$ in advance for 1..4 whole hours (`BR-05`); attach up to 5 lecture files ($\le 20\text{MB}$ in DB `BYTEA`) | `STS-04.1` | `server/tests/time.validation.test.ts` (`validateBookingTime`), `server/tests/booking.integration.test.ts`, `server/tests/api.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-09** (Booking Conflict Prevention) | **F-04** / Phureeruch | 1 | Reject overlapping bookings for the same tutor or student; atomic rollback on concurrent conflict | `STS-04.2` | `server/tests/booking-overlap.test.ts` (`findBookingConflict`), `server/tests/booking.integration.test.ts` ("only one concurrent booking") | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-10** (Mock Payment & Price Snapshot) | **F-04** / Phureeruch | 1 | Freeze base `hourlyPriceSnapshot` and compute `totalPrice` with multi-hour discount (0% 1h, 5% 2h, 10% 3–4h) | `STS-04.3` | `server/tests/price-calculation.test.ts` (`calculateBookingPrice`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-11** (Booking Information Retrieval) | **F-05**, **F-06**, **F-07** / Phureeruch | 1 | Role-filtered retrieval: Students see own bookings, Tutors see appointments, Admins view summary metrics | `STS-05.1`, `STS-06.1`, `STS-07.1` | `server/tests/api.integration.test.ts`, `server/tests/admin-metrics.test.ts`, `client/src/components/admin/adminSummary.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-12** (Cancellation & Tiered Refunds) | **F-10**, **F-11**, **F-12** / Phureeruch | 2 | 3-tier refund policy (100% $\ge 72\text{h}$, 50% $[24\text{h}, 72\text{h})$, 0% $< 24\text{h}$); tutor cancellation 100% refund | `STS-10.1`–`10.3`, `STS-11.1`–`11.2` | `server/tests/refund-calculation.test.ts` (`calculateStudentRefund`, `calculateTutorRefund`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-13** (Lesson Completion & Notes) | **F-16** / Korapin | 3 (D2 Part C) | Assigned tutor marks booking COMPLETED with 1..2,000 char summary; visible to all roles; permanently blocks cancel | `STS-16.1`–`STS-16.6` | `server/tests/lesson-completion.test.ts`, `server/tests/regression.cross-feature.test.ts`, `client/src/LessonCompletion.test.tsx` | **Passed** (`v2.1.0-d2-rc`) |
+| **FR-14** (Student Reviews & Editing) | **F-17** / Phureeruch | 3 | Student rates (1–5) and reviews completed booking; edits review in place (`updatedAt` refreshed) | `STS-17.1`–`STS-17.6` | *Uncovered Sprint 3 item; scheduled for post-exam sprint* | **Planned** (Target: Dec 5, 2026) |
+| **FR-15** (Tutor Aggregate Rating Display) | **F-18** / Korapin | 3 | Calculate & render average star rating and review count across tutor's completed bookings on profile/cards | `STS-18.1`–`STS-18.4` | *Uncovered Sprint 3 item; scheduled for post-exam sprint* | **Planned** (Target: Dec 8, 2026) |
+| **BR-01** (User Roles: STUDENT, TUTOR, ADMIN) | Architecture / Phureeruch | 1 | Database `Role` enum + `requireRole` middleware strictly enforce single role per account | `STS-01.3` | `server/tests/api.integration.test.ts`, `server/tests/lesson-completion.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-02** (Account Creation & Verification) | Auth / Korapin | 1 | Unverified students cannot book (`400 Bad Request`); unapproved tutors cannot publish availability (`403`) | `STS-01.4`, `STS-13.1` | `server/tests/booking.integration.test.ts`, `server/tests/admin-management.test.ts` (`assertTutorIsApproved`) | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-03** (Access Permissions & Ownership) | Auth / Korapin | 1 | Server validates user ownership (`userId === token.userId`); unauthorized access returns 403 Forbidden | `STS-01.3`, `STS-16.4` | `server/tests/api.integration.test.ts`, `server/tests/lesson-completion.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-04** (Availability Duration, Notice & Daily Cap) | Availability / Korapin | 1, 2 | 1..8h duration on :00/:30; $\ge 1\text{h}$ advance publication notice; $\le 8\text{h}$ daily capacity per Bangkok day (`CHG-03`) | `STS-02.2` | `server/tests/booking.integration.test.ts` (`validateAvailabilityWindow`), `server/tests/time.validation.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-05** (Booking Alignment, Cutoff & Max Duration) | Booking / Phureeruch | 1, 2 | 1-hour interval alignment from block start on :00/:30; $\ge 2\text{h}$ advance cutoff; 1..4 whole-hour max duration | `STS-04.1` | `server/tests/time.validation.test.ts` (`validateBookingTime`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-06** (Partial Booking & Availability Slicing) | Booking / Phureeruch | 1 | Booking fits within availability block; remaining time stays bookable in whole hours without dead fragments | `STS-04.1` | `server/tests/booking.integration.test.ts` ("splits availability into remaining bookable slots") | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-07** (Booking Overlap Prevention) | Booking / Phureeruch | 1 | Prevent overlapping bookings for same tutor or student; GiST exclusion constraints & pre-checks | `STS-04.2` | `server/tests/booking-overlap.test.ts` (`findBookingConflict`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-08** (Atomic Confirmation & Rollback) | Booking / Phureeruch | 1 | Mock payment, slot check, and booking confirm executed in `Serializable` transaction; rolls back on collision | `STS-04.2` | `server/tests/booking.integration.test.ts` ("only one concurrent booking", "rolls back attachment linkage") | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-09** (Price Snapshot & Bundle Discount) | Pricing / Phureeruch | 1, 2 | Frozen `hourlyPriceSnapshot` and `totalPrice` with multi-hour discount (0% 1h, 5% 2h, 10% 3–4h per `CHG-03A`) | `STS-04.3` | `server/tests/price-calculation.test.ts` (`calculateBookingPrice`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-10** (Confirmed Booking Changes: Cancel & Rebook) | Booking / Phureeruch | 2 | Schedule parameters immutable on confirmed bookings; student cancels and rebooks | `STS-10.1` | `server/tests/booking.integration.test.ts` (API route immutability) | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-11** (Student Cancellation 3-Tier Refund) | Cancellation / Phureeruch | 2 | 100% refund ($\ge 72\text{h}$), 50% refund ($[24\text{h}, 72\text{h})$), 0% refund ($< 24\text{h}$); cancellation before start only | `STS-10.1`–`10.3` | `server/tests/refund-calculation.test.ts` (`calculateStudentRefund`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-12** (Tutor Cancellation Policy) | Cancellation / Phureeruch | 2 | 100% refund to student; time slot remains permanently blocked and is never restored or reopened | `STS-11.1`–`11.2` | `server/tests/refund-calculation.test.ts` (`calculateTutorRefund`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-13** (Availability Restoration & Interval Merging) | Availability / Phureeruch | 2 | Student cancellation restores released slot and automatically merges with adjacent tutor availability intervals | `STS-12.1`, `STS-12.2` | `server/tests/interval-merge.test.ts` (`mergeAdjacentIntervals`), `server/tests/booking.integration.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-14** (Completion, Non-Cancellability & Reviews) | Completion / Korapin | 3 (D2 Part C) | Tutor marks CONFIRMED as COMPLETED with 1..2k summary; permanently locks cancellation; enables 1 review | `STS-16.1`–`STS-16.6` | `server/tests/lesson-completion.test.ts`, `server/tests/regression.cross-feature.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **BR-15** (Historical Records & Audit Retention) | Audit / Phureeruch | 2, 3 | Status preservation (`CANCELLED`, `COMPLETED`); retained revenue correctly reflects refunds (`DEF-08`) | `STS-15.3` | `server/tests/admin-metrics.test.ts` (`calculateRetainedRevenue`), `client/src/components/admin/adminSummary.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **NFR-01** (Security — Authentication & RBAC) | Security / Korapin | 1 | Passwords hashed with bcrypt; JWT bearer token validation; strict role guard on every protected route | `STS-NFR-01` | `server/tests/api.integration.test.ts`, `server/tests/lesson-completion.test.ts` | **Passed** (`v2.1.0-d2-rc`) |
+| **NFR-02** (Data Privacy & Isolation) | Security / Phureeruch | 1 | Query scoping ensures students only access own bookings, tutors only access appointments | `STS-NFR-02` | `server/tests/api.integration.test.ts` ("role isolation and attachment retrieval") | **Passed** (`v2.1.0-d2-rc`) |
+| **NFR-03** (Data Persistence) | Database / Phureeruch | 1, 2 | Relational schema in PostgreSQL; data survives container/pod restarts; automated migrations | `STS-NFR-03` | `deploy/smoke_test.py` (`/api/ready`, `/api/subjects`), Cloud SQL persistence checks | **Passed** (`v2.1.0-d2-rc`) |
+| **NFR-04** (Data Integrity & Concurrency Atomicity) | Database / Phureeruch | 1 | `prisma.$transaction` with `Serializable` isolation level prevents double bookings under race condition | `STS-NFR-04` | `server/tests/booking.integration.test.ts` ("only one concurrent booking can consume availability") | **Passed** (`v2.1.0-d2-rc`) |
+| **NFR-05** (Automated Testing & CI/CD Pipeline) | DevOps / Korapin & Phureeruch | 2 | GitHub Actions CI triggers on PRs to `main`, `sprint-2-staging`, `sprint-3-staging`; automated lint/test/build | `STS-NFR-05` | `.github/workflows/ci-docker.yml`, `.github/workflows/deploy.yml`, client & server test suites | **Passed** (`v2.1.0-d2-rc`) |
 
 ---
 
-## 3. Non-Functional Requirements Traceability
+## 2. Explicit Coverage Gaps & Sprint 3 Post-Exam Roadmap
 
-| ID | Category | Requirement Description | Implementation / Architectural Mechanism | Sprint | Responsible | Verification Method |
-|:---|:---|:---|:---|:---:|:---|:---|
-| **NFR-01** | Security — Authorization | Role & ownership validation on all protected endpoints | Express middleware (`authenticate`, `requireRole` in `middleware/auth.ts`) | 1 | Korapin | Automated Security & Pen-Testing |
-| **NFR-02** | Security — Data Privacy | Strict cross-user data isolation | User ID query scoping (`studentId = res.locals.user.id`) | 1 | Phureeruch | Automated Multi-User Privacy Test |
-| **NFR-03** | Data Persistence | Data persists across restarts in PostgreSQL | PostgreSQL database, Prisma ORM, automated migrations | 1 | Phureeruch | Restart & Migration Verification |
-| **NFR-04** | Data Integrity & Atomicity | Prevent conflicting bookings under race conditions | PostgreSQL ACID transactions via `prisma.$transaction` | 1 | Phureeruch | Concurrency Stress Test |
-| **NFR-05** | Testing & Maintainability | Automated tests for business rules, migrations, and seeds | Vitest / Jest test suites, GitHub Actions CI, Prisma seeds | 1, 2, 3 | Korapin & Phureeruch | CI Build & Automated Test Suite |
+As required by Deliverable 2 Rubric (Part D), requirements not yet implemented or tested in candidate `v2.1.0-d2-rc` are explicitly identified below with zero fabricated results:
+
+| Feature ID | Scope Description | Requirements Covered | Planned Test IDs | Scheduled Sprint 3 Window | Target Delivery Date |
+|:---|:---|:---|:---:|:---:|:---:|
+| **F-17** | Student Review Submission & In-Place Editing | `FR-14`, `BR-14` | `STS-17.1` to `STS-17.6` | Sprint 3 Post-Exam Gap | **5 December 2026** |
+| **F-18** | Tutor Aggregate Rating Display & Star Summary | `FR-15` | `STS-18.1` to `STS-18.4` | Sprint 3 Post-Exam Gap | **8 December 2026** |
+| **F-19** | Historical Records Audit, Full Hardening & Final UAT | `BR-15`, `NFR-04`, `NFR-05` | `STS-19.1` to `STS-19.3` | Sprint 3 Final Integration | **12–13 December 2026** |
+
+---
+
+## 3. Revision History
+
+| Version | Date | Author(s) | Description |
+|:---:|:---:|:---:|:---|
+| 1.0 | 2026-11-08 | Korapin, Phureeruch | Initial Sprint 1 RTM baseline covering `FR-01`–`FR-11`, `BR-01`–`BR-09`, `NFR-01`–`NFR-04`. |
+| 2.0 | 2026-11-23 | Korapin, Phureeruch | Sprint 2 baseline update covering `F-09`–`F-15`, `BR-10`–`BR-13`, 3-tier cancellation and CI/CD. |
+| 2.1 | 2026-11-26 | Korapin, Phureeruch | Unified complete single-matrix RTM for Deliverable 2 Release Candidate (`v2.1.0-d2-rc`); mapped `F-16` lesson completion as Tested; marked remaining Sprint 3 items (`F-17`–`F-19`) as Planned with explicit gap schedule. |

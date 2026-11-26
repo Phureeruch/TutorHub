@@ -465,6 +465,16 @@ export function MockAppProvider({
         const me = actor()
         return mutate((db) => api.cancelBooking(db, me, bookingId, new Date(), reason))
       },
+      completeBooking: async (bookingId, lessonSummary) => {
+        if (mode === 'api') {
+          const me = actor()
+          const booking = await httpClient.completeBooking(bookingId, lessonSummary)
+          await hydrateFromApi(me)
+          return booking
+        }
+        const me = actor()
+        return mutate((db) => api.completeBooking(db, me, bookingId, lessonSummary))
+      },
       fetchDirectory: async (filters: DirectoryFilters) => {
         if (mode === 'api') {
           return httpClient.listTutorDirectory(filters)
