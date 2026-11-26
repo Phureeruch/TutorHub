@@ -1,5 +1,11 @@
 import type { Availability, Booking, User } from '../../types/types'
-import { calculateTotalPrice, HOUR_MS, hourStarts } from '../../utils/bookingRules'
+import {
+  calculatePriceBreakdown,
+  HOUR_MS,
+  hourStarts,
+  MAX_BOOKING_DURATION_HOURS,
+  MIN_BOOKING_LEAD_MS,
+} from '../../utils/bookingRules'
 
 /**
  * BR-07 preview: the student's own lesson that [start, start + hours) would clash
@@ -41,12 +47,12 @@ export function windowChunks(availability: Availability, now: Date): Chunk[] {
   return hourStarts(availability).map((start) => ({
     start,
     end: new Date(start.getTime() + HOUR_MS),
-    bookable: start.getTime() > now.getTime(),
+    bookable: start.getTime() - now.getTime() >= MIN_BOOKING_LEAD_MS,
   }))
 }
 
-/** Why a tap was not applied: it would leave a gap, or cut the lesson in two. */
-export type ChunkRefusal = 'gap' | 'split'
+/** Why a tap was not applied: it would leave a gap, cut the lesson in two, or exceed 4 hours. */
+export type ChunkRefusal = 'gap' | 'split' | 'max_duration'
 
 export interface ChunkToggle {
   selection: ChunkSelection | null
@@ -56,7 +62,7 @@ export interface ChunkToggle {
 /**
  * Tap-to-toggle on the ruler: each tap adds or removes one hour, and the total
  * follows. A lesson is one booking, so its hours must stay back to back: a tap
- * may only grow or shrink the selection at either end.
+ * may only grow or shrink the selection at either end (up to MAX_BOOKING_DURATION_HOURS).
  */
 export function toggleChunk(current: ChunkSelection | null, index: number, chunks: Chunk[]): ChunkToggle {
   if (!chunks[index]?.bookable) return { selection: current, refused: null }
@@ -68,8 +74,14 @@ export function toggleChunk(current: ChunkSelection | null, index: number, chunk
   if (index === start) return { selection: { start: start + 1, length: length - 1 }, refused: null }
   if (index === last) return { selection: { start, length: length - 1 }, refused: null }
   if (index > start && index < last) return { selection: current, refused: 'split' }
-  if (index === start - 1) return { selection: { start: index, length: length + 1 }, refused: null }
-  if (index === last + 1) return { selection: { start, length: length + 1 }, refused: null }
+  if (index === start - 1) {
+    if (length >= MAX_BOOKING_DURATION_HOURS) return { selection: current, refused: 'max_duration' }
+    return { selection: { start: index, length: length + 1 }, refused: null }
+  }
+  if (index === last + 1) {
+    if (length >= MAX_BOOKING_DURATION_HOURS) return { selection: current, refused: 'max_duration' }
+    return { selection: { start, length: length + 1 }, refused: null }
+  }
   return { selection: current, refused: 'gap' }
 }
 
@@ -95,7 +107,15 @@ export function chunkSelectionToBooking(
 }
 
 export function priceSummary(hourly: number, hours: number) {
-  return { hourly, hours, total: calculateTotalPrice(hourly, hours) }
+  const breakdown = calculatePriceBreakdown(hourly, hours)
+  return {
+    hourly,
+    hours,
+    subtotal: breakdown.subtotal,
+    discountPercentage: breakdown.discountPercentage,
+    discountAmount: breakdown.discountAmount,
+    total: breakdown.total,
+  }
 }
 
 /** BR-02: why this user cannot book yet, or null if they can. */

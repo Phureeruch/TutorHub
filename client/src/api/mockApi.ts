@@ -35,7 +35,10 @@ import {
   isAlignedBookingStart,
   isSlotInTimeWindow,
   isWithin,
+  MAX_BOOKING_DURATION_HOURS,
+  MAX_DAILY_TUTOR_HOURS,
   mergeAdjacentAvailabilities,
+  MIN_BOOKING_LEAD_MS,
   sliceAvailabilityAfterBooking,
   validateAvailabilityInput,
 } from '../utils/bookingRules'
@@ -224,6 +227,42 @@ export function updateTutorProfile(
 const rangesOverlap = (aStart: string, aEnd: string, bStart: Date, bEnd: Date) =>
   new Date(aStart).getTime() < bEnd.getTime() && bStart.getTime() < new Date(aEnd).getTime()
 
+const overlapMs = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
+  Math.max(0, Math.min(aEnd.getTime(), bEnd.getTime()) - Math.max(aStart.getTime(), bStart.getTime()))
+
+function assertMockDailyTutorCapacity(
+  availabilities: Availability[],
+  bookings: Booking[],
+  tutorId: number,
+  start: Date,
+  end: Date,
+): void {
+  const firstDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const lastPoint = new Date(Math.max(start.getTime(), end.getTime() - 1))
+  const lastDay = new Date(lastPoint.getFullYear(), lastPoint.getMonth(), lastPoint.getDate())
+
+  for (let d = new Date(firstDay); d.getTime() <= lastDay.getTime(); d.setDate(d.getDate() + 1)) {
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0)
+    const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0)
+
+    let totalMs = overlapMs(start, end, dayStart, dayEnd)
+    for (const a of availabilities) {
+      if (a.tutorId === tutorId) {
+        totalMs += overlapMs(new Date(a.startTime), new Date(a.endTime), dayStart, dayEnd)
+      }
+    }
+    for (const b of bookings) {
+      if (b.tutorId === tutorId && b.status !== 'CANCELLED') {
+        totalMs += overlapMs(new Date(b.startTime), new Date(b.endTime), dayStart, dayEnd)
+      }
+    }
+
+    if (totalMs > MAX_DAILY_TUTOR_HOURS * HOUR_MS) {
+      throw new ApiError(400, 'Daily tutor availability and booked lessons cannot exceed 8 hours per day.')
+    }
+  }
+}
+
 export function createAvailability(
   db: MockDb,
   actor: User,
@@ -249,6 +288,8 @@ export function createAvailability(
   ) {
     throw new ApiError(400, 'This overlaps a lesson that is already booked.')
   }
+
+  assertMockDailyTutorCapacity(db.availabilities, db.bookings, actor.id, start, end)
 
   const stamp = now.toISOString()
   const { availabilities, merged, nextAvailabilityId } = mergeAdjacentAvailabilities(
@@ -312,6 +353,8 @@ export function updateAvailability(
     throw new ApiError(400, 'This overlaps a lesson that is already booked.')
   }
 
+  assertMockDailyTutorCapacity(others, db.bookings, actor.id, start, end)
+
   const stamp = now.toISOString()
   const { availabilities, merged, nextAvailabilityId } = mergeAdjacentAvailabilities(
     others,
@@ -365,9 +408,15 @@ export function createBooking(
   if (!Number.isInteger(req.durationHours) || req.durationHours < 1) {
     throw new ApiError(400, 'Lesson length must be a whole number of hours.')
   }
+  if (req.durationHours > MAX_BOOKING_DURATION_HOURS) {
+    throw new ApiError(400, 'A single booking cannot exceed 4 hours.')
+  }
   const start = new Date(req.startTime)
   const end = new Date(start.getTime() + req.durationHours * HOUR_MS)
   if (start.getTime() <= now.getTime()) throw new ApiError(400, 'Choose a start time in the future.')
+  if (start.getTime() - now.getTime() < MIN_BOOKING_LEAD_MS) {
+    throw new ApiError(400, 'Bookings must be made at least 2 hours before the lesson starts.')
+  }
 
   const tutor = findUser(db, req.tutorId)
   if (tutor.role !== 'TUTOR' || !tutor.isApproved) throw new ApiError(404, 'Tutor not found.')

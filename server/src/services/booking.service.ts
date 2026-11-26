@@ -2,12 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { findBookingConflict } from '../utils/booking-overlap.js';
-import { calculateBookingPrice } from '../utils/price-calculation.js';
+import {
+  calculateBookingPrice,
+  MAX_BOOKING_DURATION_HOURS,
+} from '../utils/price-calculation.js';
 import {
   calculateStudentRefund,
   calculateTutorRefund,
 } from '../utils/refund-calculation.js';
-import { validateBookingTime } from '../utils/time.validation.js';
+import {
+  MIN_BOOKING_LEAD_MS,
+  validateBookingTime,
+} from '../utils/time.validation.js';
 import { restoreAndMergeAvailability } from './availability.service.js';
 import {
   validateLessonSummary,
@@ -103,9 +109,18 @@ async function createBookingAttempt(input: CreateBookingInput) {
   if (!Number.isInteger(input.durationHours) || input.durationHours < 1) {
     throw new BookingError(400, 'Lesson length must be a whole number of hours.');
   }
+  if (input.durationHours > MAX_BOOKING_DURATION_HOURS) {
+    throw new BookingError(400, 'A single booking cannot exceed 4 hours.');
+  }
 
   if (Number.isNaN(startTime.getTime()) || startTime <= now) {
     throw new BookingError(400, 'Choose a start time in the future.');
+  }
+  if (startTime.getTime() - now.getTime() < MIN_BOOKING_LEAD_MS) {
+    throw new BookingError(
+      400,
+      'Bookings must be made at least 2 hours before the lesson starts.',
+    );
   }
   if (
     (startTime.getUTCMinutes() !== 0 && startTime.getUTCMinutes() !== 30) ||
@@ -274,13 +289,13 @@ async function createBookingAttempt(input: CreateBookingInput) {
         throw new BookingError(409, 'You already have a lesson at this time.');
       }
 
-      // Mock payment succeeds in Sprint 1; validate & snapshot the subject's rate (BR-09).
-      calculateBookingPrice({
+      // Mock payment succeeds in Sprint 1; validate & snapshot the subject's rate and apply multi-hour bundle discount (BR-09, CHG-03A).
+      const price = calculateBookingPrice({
         hourlyPrice: Number(tutorSubject.hourlyPrice),
         durationHours: input.durationHours,
       });
       const hourlyPriceSnapshot = tutorSubject.hourlyPrice;
-      const totalPrice = hourlyPriceSnapshot.mul(input.durationHours);
+      const totalPrice = new Prisma.Decimal(price.totalPrice.toFixed(2));
 
       const booking = await tx.booking.create({
         data: {
