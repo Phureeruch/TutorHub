@@ -2,7 +2,13 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { bookingInclude, toBookingDto } from '../routes/booking.routes.js';
 import { mergeAdjacentIntervals } from '../utils/interval-merge.js';
-import { validateAvailabilityWindow } from '../utils/time.validation.js';
+import {
+  computeOverlapMs,
+  getOverlappedBangkokDaysUtc,
+  HOUR_MS,
+  MAX_DAILY_TUTOR_HOURS,
+  validateAvailabilityWindow,
+} from '../utils/time.validation.js';
 
 export class AvailabilityError extends Error {
   constructor(
@@ -74,6 +80,61 @@ export async function restoreAndMergeAvailability(
   });
 }
 
+/**
+ * BR-04 (CHG-03C): Enforces that a tutor's combined open Availability hours
+ * and non-cancelled Booking hours on any overlapped Asia/Bangkok (UTC+7)
+ * calendar day do not exceed MAX_DAILY_TUTOR_HOURS (8 hours).
+ */
+async function assertDailyTutorCapacity(
+  tx: Prisma.TransactionClient,
+  tutorId: number,
+  startTime: Date,
+  endTime: Date,
+  excludeAvailabilityId?: number,
+): Promise<void> {
+  const bangkokDays = getOverlappedBangkokDaysUtc(startTime, endTime);
+
+  for (const { dayStartUtc, dayEndUtc } of bangkokDays) {
+    const [availabilities, bookings] = await Promise.all([
+      tx.availability.findMany({
+        where: {
+          tutorId,
+          ...(excludeAvailabilityId !== undefined
+            ? { id: { not: excludeAvailabilityId } }
+            : {}),
+          startTime: { lt: dayEndUtc },
+          endTime: { gt: dayStartUtc },
+        },
+        select: { startTime: true, endTime: true },
+      }),
+      tx.booking.findMany({
+        where: {
+          tutorId,
+          status: { not: 'CANCELLED' },
+          startTime: { lt: dayEndUtc },
+          endTime: { gt: dayStartUtc },
+        },
+        select: { startTime: true, endTime: true },
+      }),
+    ]);
+
+    let totalDayMs = computeOverlapMs(startTime, endTime, dayStartUtc, dayEndUtc);
+    for (const av of availabilities) {
+      totalDayMs += computeOverlapMs(av.startTime, av.endTime, dayStartUtc, dayEndUtc);
+    }
+    for (const bk of bookings) {
+      totalDayMs += computeOverlapMs(bk.startTime, bk.endTime, dayStartUtc, dayEndUtc);
+    }
+
+    if (totalDayMs > MAX_DAILY_TUTOR_HOURS * HOUR_MS) {
+      throw new AvailabilityError(
+        'Daily tutor availability and booked lessons cannot exceed 8 hours per day.',
+        400,
+      );
+    }
+  }
+}
+
 export async function createAvailability(
   tutorId: number,
   input: {
@@ -134,6 +195,8 @@ export async function createAvailability(
             400,
           );
         }
+
+        await assertDailyTutorCapacity(tx, tutorId, startTime, endTime);
 
         return restoreAndMergeAvailability(tx, tutorId, startTime, endTime);
       },
@@ -223,6 +286,14 @@ export async function updateAvailability(
             400,
           );
         }
+
+        await assertDailyTutorCapacity(
+          tx,
+          tutorId,
+          startTime,
+          endTime,
+          availabilityId,
+        );
 
         await tx.availability.delete({
           where: { id: availabilityId },

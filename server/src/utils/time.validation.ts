@@ -1,4 +1,10 @@
-const HOUR_MS = 60 * 60 * 1000;
+export const HOUR_MS = 60 * 60 * 1000;
+export const DAY_MS = 24 * HOUR_MS;
+export const BANGKOK_OFFSET_MS = 7 * HOUR_MS;
+export const MIN_AVAILABILITY_LEAD_MS = 1 * HOUR_MS;
+export const MAX_DAILY_TUTOR_HOURS = 8;
+export const MIN_BOOKING_LEAD_MS = 2 * HOUR_MS;
+export const MAX_BOOKING_DURATION_HOURS = 4;
 
 interface ValidateBookingTimeInput {
   startTime: Date;
@@ -11,6 +17,42 @@ interface ValidateBookingTimeInput {
 type ValidationResult =
   | { valid: true }
   | { valid: false; reason: string };
+
+/**
+ * Returns the UTC start and end bounds `[dayStartUtc, dayEndUtc)` of every
+ * Asia/Bangkok (UTC+7) local calendar day overlapped by `[startTime, endTime)`.
+ */
+export function getOverlappedBangkokDaysUtc(
+  startTime: Date,
+  endTime: Date,
+): { dayStartUtc: Date; dayEndUtc: Date }[] {
+  const startBkkMs = startTime.getTime() + BANGKOK_OFFSET_MS;
+  const endBkkMs = Math.max(startBkkMs, endTime.getTime() + BANGKOK_OFFSET_MS - 1);
+
+  const firstDayFloorBkk = Math.floor(startBkkMs / DAY_MS) * DAY_MS;
+  const lastDayFloorBkk = Math.floor(endBkkMs / DAY_MS) * DAY_MS;
+
+  const days: { dayStartUtc: Date; dayEndUtc: Date }[] = [];
+  for (let dayBkk = firstDayFloorBkk; dayBkk <= lastDayFloorBkk; dayBkk += DAY_MS) {
+    const dayStartUtcMs = dayBkk - BANGKOK_OFFSET_MS;
+    days.push({
+      dayStartUtc: new Date(dayStartUtcMs),
+      dayEndUtc: new Date(dayStartUtcMs + DAY_MS),
+    });
+  }
+  return days;
+}
+
+export function computeOverlapMs(
+  aStart: Date,
+  aEnd: Date,
+  bStart: Date,
+  bEnd: Date,
+): number {
+  const start = Math.max(aStart.getTime(), bStart.getTime());
+  const end = Math.min(aEnd.getTime(), bEnd.getTime());
+  return Math.max(0, end - start);
+}
 
 export function validateAvailabilityWindow(
   startTime: Date,
@@ -52,10 +94,17 @@ export function validateAvailabilityWindow(
     };
   }
 
-  if (startTime.getTime() <= now.getTime()) {
+  if (duration > MAX_DAILY_TUTOR_HOURS * HOUR_MS) {
     return {
       valid: false,
-      reason: 'Availability must start in the future.',
+      reason: 'Daily tutor availability and booked lessons cannot exceed 8 hours per day.',
+    };
+  }
+
+  if (startTime.getTime() - now.getTime() < MIN_AVAILABILITY_LEAD_MS) {
+    return {
+      valid: false,
+      reason: 'Availability must start at least 1 hour in the future.',
     };
   }
 
@@ -85,8 +134,11 @@ export function validateBookingTime(
     return { valid: false, reason: 'Invalid date' };
   }
 
-  if (startTime <= now) {
-    return { valid: false, reason: 'Booking must start in the future' };
+  if (startTime.getTime() - now.getTime() < MIN_BOOKING_LEAD_MS) {
+    return {
+      valid: false,
+      reason: 'Bookings must be made at least 2 hours before the lesson starts.',
+    };
   }
 
   if (
@@ -111,6 +163,13 @@ export function validateBookingTime(
 
   if (duration % HOUR_MS !== 0) {
     return { valid: false, reason: 'Duration must be whole hours' };
+  }
+
+  if (duration > MAX_BOOKING_DURATION_HOURS * HOUR_MS) {
+    return {
+      valid: false,
+      reason: 'A single booking cannot exceed 4 hours.',
+    };
   }
 
   if (startTime < availabilityStartTime) {

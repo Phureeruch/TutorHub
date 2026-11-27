@@ -84,14 +84,21 @@ describe('validateAvailabilityInput (BR-04)', () => {
     expect(validateAvailabilityInput(t(12), t(10)).ok).toBe(false)
   })
 
-  it('rejects a start in the past when now is given', () => {
-    const result = validateAvailabilityInput(t(9), t(10), t(9, 1))
+  it('rejects a start in the past or less than 1 hour in the future when now is given (CHG-03C, STS-L7-05)', () => {
+    const result = validateAvailabilityInput(t(9), t(10), t(8, 30))
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/future/)
+    if (!result.ok) expect(result.error).toMatch(/at least 1 hour in the future/)
+    expect(validateAvailabilityInput(t(9), t(10), t(8, 0))).toEqual({ ok: true })
+  })
+
+  it('rejects an availability window exceeding 8 hours (CHG-03C, STS-L7-06)', () => {
+    const result = validateAvailabilityInput(t(8), t(17))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/cannot exceed 8 hours per day/)
   })
 })
 
-describe('getValidStartSlots (BR-05)', () => {
+describe('getValidStartSlots (BR-05, CHG-03B)', () => {
   const block = availability(t(9, 30), t(12, 30))
 
   it('steps in whole hours from the block start', () => {
@@ -102,8 +109,9 @@ describe('getValidStartSlots (BR-05)', () => {
     expect(getValidStartSlots(block).map(hhmm)).not.toContain('10:00')
   })
 
-  it('drops start times that are not in the future when now is given', () => {
-    expect(getValidStartSlots(block, t(10)).map(hhmm)).toEqual(['10:30', '11:30'])
+  it('drops start times that are less than 2 hours in the future when now is given (STS-L7-03)', () => {
+    expect(getValidStartSlots(block, t(8)).map(hhmm)).toEqual(['10:30', '11:30'])
+    expect(getValidStartSlots(block, t(7, 30)).map(hhmm)).toEqual(['09:30', '10:30', '11:30'])
   })
 })
 
@@ -172,9 +180,12 @@ describe('hasBookingOverlap (BR-07)', () => {
   })
 })
 
-describe('calculateTotalPrice (BR-09)', () => {
-  it('multiplies the hourly snapshot by whole hours', () => {
-    expect(calculateTotalPrice(40, 3)).toBe(120)
+describe('calculateTotalPrice (BR-09, CHG-03A, STS-L7-01)', () => {
+  it('applies 0% discount for 1h, 5% discount for 2h, and 10% discount for 3h-4h', () => {
+    expect(calculateTotalPrice(400, 1)).toBe(400)
+    expect(calculateTotalPrice(400, 2)).toBe(760)
+    expect(calculateTotalPrice(400, 3)).toBe(1080)
+    expect(calculateTotalPrice(400, 4)).toBe(1440)
   })
 })
 
